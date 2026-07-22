@@ -598,6 +598,15 @@
     if (loopPlaying || loopStarting) return;
     loopStarting = true;
     try {
+      audio.primeUserGesture();
+      audio.primeLoopPlayback(
+        project.loop.events.flatMap((event) => {
+          const sampleId = project.pads.find(
+            (pad) => pad.id === event.padId,
+          )?.sampleId;
+          return sampleId ? [sampleId] : [];
+        }),
+      );
       for (const pad of project.pads) {
         if (!pad.sampleId) continue;
         const customSample = samples.get(pad.sampleId);
@@ -633,6 +642,7 @@
   function stopLooper(): void {
     loopScheduler?.stop();
     loopScheduler = null;
+    audio.stopScheduledPlayback();
     for (const timer of loopStepTimers) clearTimeout(timer);
     loopStepTimers.clear();
     loopPlaying = false;
