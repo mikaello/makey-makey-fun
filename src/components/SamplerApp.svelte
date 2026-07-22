@@ -1,7 +1,9 @@
 <script lang="ts">
   import {
     Activity,
+    Download,
     FileAudio,
+    FolderOpen,
     Library,
     LoaderCircle,
     MousePointer2,
@@ -23,6 +25,11 @@
     type MakeyKeyboardCode,
   } from '../lib/input';
   import {
+    exportPortableProject,
+    importPortableProject,
+    PortableProjectError,
+  } from '../lib/portable-project';
+  import {
     assignSampleToPad,
     createDefaultProject,
     resetProjectToStarterKit,
@@ -32,6 +39,7 @@
   } from '../lib/project';
   import {
     loadWorkspace,
+    replaceWorkspace,
     resetWorkspace,
     saveSampleAssignment,
   } from '../lib/storage';
@@ -55,6 +63,7 @@
   let openPanel: OpenPanel = null;
   let mouseBindingEnabled = false;
   let uploadBusy = false;
+  let portabilityBusy = false;
   let lastInput = 'Waiting for input';
   let errorMessage = '';
 
@@ -226,6 +235,55 @@
     }
   }
 
+  async function downloadProject(): Promise<void> {
+    portabilityBusy = true;
+    try {
+      const contents = await exportPortableProject(project, [
+        ...samples.values(),
+      ]);
+      const url = URL.createObjectURL(
+        new Blob([contents], { type: 'application/json' }),
+      );
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `${safeFilename(project.name)}.makey-sampler.json`;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (error) {
+      showError(error, 'The project could not be exported.');
+    } finally {
+      portabilityBusy = false;
+    }
+  }
+
+  async function handleProjectImport(event: Event): Promise<void> {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+
+    portabilityBusy = true;
+    try {
+      const imported = await importPortableProject(file);
+      await replaceWorkspace(imported.project, imported.samples);
+      for (const sampleId of samples.keys()) audio.removeSample(sampleId);
+      samples.clear();
+      for (const sample of imported.samples) samples.set(sample.id, sample);
+      project = imported.project;
+      selectedPadId = project.pads[0]?.id ?? '';
+      openPanel = null;
+    } catch (error) {
+      errorMessage =
+        error instanceof PortableProjectError
+          ? error.message
+          : 'The project could not be imported.';
+    } finally {
+      portabilityBusy = false;
+    }
+  }
+
   async function unlockAudio(): Promise<void> {
     try {
       await audio.unlock();
@@ -280,6 +338,15 @@
         .replace(/\.[^/.]+$/, '')
         .trim()
         .slice(0, 48) || 'Custom sound'
+    );
+  }
+
+  function safeFilename(name: string): string {
+    return (
+      name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '') || 'makey-sampler'
     );
   }
 
@@ -456,6 +523,29 @@
             </span>
           </div>
         {/if}
+
+        <div class="portability-actions" aria-label="Project files">
+          <button
+            type="button"
+            disabled={portabilityBusy}
+            onclick={downloadProject}
+          >
+            <Download size={19} />
+            <span>Export project</span>
+          </button>
+          <label class:busy={portabilityBusy} for="project-import">
+            <FolderOpen size={19} />
+            <span>Import project</span>
+          </label>
+          <input
+            id="project-import"
+            class="visually-hidden"
+            type="file"
+            accept="application/json,.json"
+            disabled={portabilityBusy}
+            onchange={handleProjectImport}
+          />
+        </div>
 
         <div class="panel-actions">
           <label
