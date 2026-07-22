@@ -5,19 +5,24 @@ test('records, overdubs, mutes, and restores a quantized loop', async ({
 }) => {
   await page.goto('/');
   await page.locator('main[data-storage-ready="true"]').waitFor();
-  await page.getByRole('button', { name: 'Open loop controls' }).click();
+  await page.getByRole('button', { name: 'Open beat loop builder' }).click();
 
-  const looper = page.getByRole('dialog', { name: 'Looper' });
-  await looper.getByLabel('BPM').fill('132');
+  const looper = page.getByRole('dialog', { name: 'Build a beat loop' });
+  await expect(looper.getByText('Choose the speed and length')).toBeVisible();
+  await looper.getByLabel('Speed (BPM)').fill('132');
   await looper.getByRole('button', { name: '2 bars' }).click();
-  await looper.getByRole('button', { name: 'Start', exact: true }).click();
+  await looper
+    .getByRole('button', { name: 'Start recording', exact: true })
+    .click();
   await expect(
     looper.getByRole('button', { name: 'Stop', exact: true }),
   ).toBeVisible();
 
-  const record = looper.getByRole('button', { name: 'Record', exact: true });
-  await record.click();
-  await expect(record).toHaveAttribute('aria-pressed', 'true');
+  const doneAdding = looper.getByRole('button', {
+    name: 'Done adding',
+    exact: true,
+  });
+  await expect(doneAdding).toHaveAttribute('aria-pressed', 'true');
   await looper.getByRole('button', { name: 'Loop pad 1: Kick' }).click();
   await expect(looper.getByText('1 hit')).toBeVisible();
   await expect(looper).toHaveAttribute('data-loop-saving', 'false');
@@ -29,8 +34,8 @@ test('records, overdubs, mutes, and restores a quantized loop', async ({
 
   await page.reload();
   await page.locator('main[data-storage-ready="true"]').waitFor();
-  await page.getByRole('button', { name: 'Open loop controls' }).click();
-  await expect(looper.getByLabel('BPM')).toHaveValue('132');
+  await page.getByRole('button', { name: 'Open beat loop builder' }).click();
+  await expect(looper.getByLabel('Speed (BPM)')).toHaveValue('132');
   await expect(looper.getByRole('button', { name: '2 bars' })).toHaveAttribute(
     'aria-pressed',
     'true',
@@ -42,6 +47,6 @@ test('records, overdubs, mutes, and restores a quantized loop', async ({
   await expect(looper).toHaveAttribute('data-loop-saving', 'false');
   await page.reload();
   await page.locator('main[data-storage-ready="true"]').waitFor();
-  await page.getByRole('button', { name: 'Open loop controls' }).click();
+  await page.getByRole('button', { name: 'Open beat loop builder' }).click();
   await expect(looper.getByText('0 hits')).toBeVisible();
 });

@@ -9,7 +9,7 @@ test('has no detectable accessibility violations in primary views', async ({
   await expectAccessible(page);
 
   for (const buttonName of [
-    'Open loop controls',
+    'Open beat loop builder',
     'Record',
     'Sounds',
     'Test Makey Makey',
