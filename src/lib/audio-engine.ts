@@ -3,6 +3,14 @@ import { calculateWaveform, normalizeTrim } from './sample-editing';
 
 export type AudioEngineState = 'locked' | 'ready' | 'error';
 
+type AudioContextConstructor = new (
+  options?: AudioContextOptions,
+) => AudioContext;
+type WebKitAudioWindow = Window &
+  typeof globalThis & {
+    webkitAudioContext?: AudioContextConstructor;
+  };
+
 export class AudioEngine {
   private context: AudioContext | null = null;
   private readonly buffers = new Map<string, AudioBuffer>();
@@ -69,8 +77,8 @@ export class AudioEngine {
       trimStart?: number;
     } = {},
   ): Promise<void> {
-    await this.unlock();
     const context = this.getContext();
+    this.prepare();
     const buffer = this.buffers.get(sampleId);
     if (!buffer) throw new Error(`Unknown starter sample: ${sampleId}`);
 
@@ -105,6 +113,7 @@ export class AudioEngine {
     } else {
       source.start(0, trim.start, Math.max(0, trim.end - trim.start));
     }
+    if (context.state !== 'running') await context.resume();
   }
 
   isLooping(loopId: string): boolean {
@@ -160,8 +169,12 @@ export class AudioEngine {
   }
 
   private getContext(): AudioContext {
-    if (!this.context)
-      this.context = new AudioContext({ latencyHint: 'interactive' });
+    if (!this.context) {
+      const AudioContextClass =
+        window.AudioContext ?? (window as WebKitAudioWindow).webkitAudioContext;
+      if (!AudioContextClass) throw new Error('Web Audio is unavailable.');
+      this.context = new AudioContextClass({ latencyHint: 'interactive' });
+    }
     return this.context;
   }
 }
