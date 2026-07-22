@@ -158,13 +158,12 @@ export const starterKit: StarterSound[] = [
   },
 ];
 
-export function createStarterBuffer(
-  context: AudioContext,
+export function createStarterChannelData(
   sound: StarterSound,
-): AudioBuffer {
-  const frameCount = Math.ceil(context.sampleRate * sound.duration);
-  const buffer = context.createBuffer(1, frameCount, context.sampleRate);
-  const channel = buffer.getChannelData(0);
+  sampleRate: number,
+): Float32Array {
+  const frameCount = Math.ceil(sampleRate * sound.duration);
+  const channel = new Float32Array(frameCount);
   const random = seededRandom(sound.id);
   let phase = 0;
   let previousNoise = 0;
@@ -174,19 +173,31 @@ export function createStarterBuffer(
     const frequency =
       sound.frequencyStart *
       Math.pow(sound.frequencyEnd / sound.frequencyStart, progress);
-    phase += (Math.PI * 2 * frequency) / context.sampleRate;
+    phase += (Math.PI * 2 * frequency) / sampleRate;
     const rawNoise = random() * 2 - 1;
     const brightNoise = rawNoise - previousNoise * 0.72;
     previousNoise = rawNoise;
     const oscillator = waveformValue(sound.waveform, phase, brightNoise);
     const clapPulse = sound.id === 'clap' ? clapEnvelope(progress) : 1;
-    const attack = Math.min(1, frame / Math.max(1, context.sampleRate * 0.003));
+    const attack = Math.min(1, frame / Math.max(1, sampleRate * 0.003));
     const envelope = attack * Math.exp(-sound.decay * progress) * clapPulse;
     const value =
       oscillator * (1 - sound.noiseMix) + brightNoise * sound.noiseMix;
     channel[frame] = Math.max(-1, Math.min(1, value * envelope * 0.82));
   }
 
+  return channel;
+}
+
+export function createStarterBuffer(
+  context: AudioContext,
+  sound: StarterSound,
+): AudioBuffer {
+  const channelData = createStarterChannelData(sound, context.sampleRate);
+  const frameCount = channelData.length;
+  const buffer = context.createBuffer(1, frameCount, context.sampleRate);
+  const channel = buffer.getChannelData(0);
+  channel.set(channelData);
   return buffer;
 }
 

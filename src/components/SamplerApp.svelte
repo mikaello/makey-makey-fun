@@ -873,6 +873,13 @@
   }
 
   function pressPad(pad: Pad, sourceId: string): void {
+    try {
+      audio.primeUserGesture();
+    } catch (error) {
+      audioState = 'error';
+      showError(error, t('error.playPad', { name: displayPadLabel(pad) }));
+      return;
+    }
     recentDirectPadGestures.set(pad.id, performance.now());
     setPadActive(pad.id, sourceId, true);
     void playPad(pad);

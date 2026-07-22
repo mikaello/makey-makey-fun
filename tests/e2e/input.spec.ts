@@ -110,10 +110,10 @@ test('plays pads from touch events without relying on pointer events', async ({
   await page.addInitScript(() => {
     const win = window as typeof window & {
       __audioEvents?: string[];
-      __audioStarts?: number;
+      __mediaPlays?: number;
     };
     win.__audioEvents = [];
-    win.__audioStarts = 0;
+    win.__mediaPlays = 0;
 
     class FakeAudioBuffer {
       duration: number;
@@ -151,7 +151,7 @@ test('plays pads from touch events without relying on pointer events', async ({
       createBufferSource() {
         return {
           addEventListener() {},
-          buffer: null,
+          buffer: null as FakeAudioBuffer | null,
           connect(node: unknown) {
             return node;
           },
@@ -159,8 +159,9 @@ test('plays pads from touch events without relying on pointer events', async ({
           loopEnd: 0,
           loopStart: 0,
           start() {
-            win.__audioEvents?.push('start');
-            win.__audioStarts = (win.__audioStarts ?? 0) + 1;
+            if (this.buffer?.length === 1) {
+              win.__audioEvents?.push('unlock-start');
+            }
           },
           stop() {},
         };
@@ -186,9 +187,34 @@ test('plays pads from touch events without relying on pointer events', async ({
       }
     }
 
+    class FakeAudio {
+      currentTime = 0;
+      loop = false;
+      preload = '';
+      volume = 1;
+
+      constructor(readonly url: string) {}
+
+      addEventListener() {}
+
+      pause() {
+        win.__audioEvents?.push('media-pause');
+      }
+
+      play() {
+        win.__audioEvents?.push('media-play');
+        win.__mediaPlays = (win.__mediaPlays ?? 0) + 1;
+        return Promise.resolve();
+      }
+    }
+
     Object.defineProperty(window, 'AudioContext', {
       configurable: true,
       value: FakeAudioContext,
+    });
+    Object.defineProperty(window, 'Audio', {
+      configurable: true,
+      value: FakeAudio,
     });
   });
   await page.goto('/');
@@ -214,7 +240,7 @@ test('plays pads from touch events without relying on pointer events', async ({
     .poll(() =>
       page.evaluate(
         () =>
-          (window as typeof window & { __audioStarts?: number }).__audioStarts,
+          (window as typeof window & { __mediaPlays?: number }).__mediaPlays,
       ),
     )
     .toBe(1);
@@ -222,11 +248,21 @@ test('plays pads from touch events without relying on pointer events', async ({
     .poll(() =>
       page.evaluate(
         () =>
-          (window as typeof window & { __audioEvents?: string[] })
-            .__audioEvents?.[0],
+          (
+            window as typeof window & { __audioEvents?: string[] }
+          ).__audioEvents?.filter((event) => event === 'media-play').length,
       ),
     )
-    .toBe('start');
+    .toBe(1);
+  const audioEvents = await page.evaluate(
+    () =>
+      (window as typeof window & { __audioEvents?: string[] }).__audioEvents ??
+      [],
+  );
+  expect(audioEvents[0]).toBe('unlock-start');
+  expect(audioEvents.indexOf('resume')).toBeLessThan(
+    audioEvents.indexOf('media-play'),
+  );
 
   await page.evaluate(() => {
     const button = document.querySelector<HTMLButtonElement>('.pad');
