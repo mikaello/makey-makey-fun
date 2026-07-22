@@ -113,6 +113,8 @@
   let recordingSession: MicrophoneRecorder | null = null;
   let pendingRecording: (RecordingResult & { id: string }) | null = null;
   let recordingElapsed = 0;
+  let recordingLevel = 0;
+  let recordingLevelFrame: number | null = null;
   let recordingTimer: ReturnType<typeof setInterval> | null = null;
   let recordingError = '';
   let editBusy = false;
@@ -737,6 +739,7 @@
       recordingSession = await MicrophoneRecorder.create();
       recordingSession.start();
       recordingState = 'recording';
+      startRecordingMeter();
       const startedAt = Date.now();
       recordingTimer = setInterval(() => {
         recordingElapsed = (Date.now() - startedAt) / 1000;
@@ -751,6 +754,7 @@
   async function stopRecording(): Promise<void> {
     if (!recordingSession || recordingState !== 'recording') return;
     stopRecordingTimer();
+    stopRecordingMeter();
 
     try {
       const result = await recordingSession.stop();
@@ -820,6 +824,7 @@
     stopRecordingTimer();
     clearPendingRecording();
     recordingElapsed = 0;
+    stopRecordingMeter();
     recordingError = '';
     recordingState = 'idle';
   }
@@ -837,6 +842,27 @@
   function stopRecordingTimer(): void {
     if (recordingTimer) clearInterval(recordingTimer);
     recordingTimer = null;
+  }
+
+  function startRecordingMeter(): void {
+    stopRecordingMeter();
+    const update = (): void => {
+      if (!recordingSession || recordingState !== 'recording') {
+        recordingLevelFrame = null;
+        return;
+      }
+      recordingLevel = recordingSession.getInputLevel();
+      recordingLevelFrame = requestAnimationFrame(update);
+    };
+    update();
+  }
+
+  function stopRecordingMeter(): void {
+    if (recordingLevelFrame !== null) {
+      cancelAnimationFrame(recordingLevelFrame);
+      recordingLevelFrame = null;
+    }
+    recordingLevel = 0;
   }
 
   function nextRecordingName(): string {
@@ -1611,6 +1637,25 @@
             </strong>
           </span>
         </div>
+
+        {#if recordingState === 'recording'}
+          <div class="input-level">
+            <span>{t('record.inputLevel')}</span>
+            <div
+              class="input-level-track"
+              role="progressbar"
+              aria-label={t('record.inputLevel')}
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow={Math.round(recordingLevel * 100)}
+            >
+              <span
+                class="input-level-fill"
+                style={`transform: scaleX(${recordingLevel})`}
+              ></span>
+            </div>
+          </div>
+        {/if}
 
         {#if recordingError}
           <p class="recording-error" role="alert">{recordingError}</p>

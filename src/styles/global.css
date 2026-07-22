@@ -868,6 +868,39 @@ footer {
   white-space: nowrap;
 }
 
+.input-level {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.2rem 0.75rem;
+  color: #655f56;
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.input-level-track {
+  height: 0.65rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dedbd3;
+}
+
+.input-level-fill {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: inherit;
+  background: linear-gradient(
+    to right,
+    #52825d 0 72%,
+    #d49b3b 72% 90%,
+    #b64136 90%
+  );
+  transform-origin: left;
+  transition: transform 80ms linear;
+}
+
 .recording-error {
   margin: 0;
   padding: 0.7rem 0.75rem;
