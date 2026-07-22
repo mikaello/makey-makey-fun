@@ -193,21 +193,33 @@ footer {
 }
 
 .record-tool-button {
-  padding-inline: 0.65rem;
-  border: 1px solid #8e3028;
-  border-radius: 0.4rem;
+  padding-inline: 0.7rem;
+  border: 1px solid #d7aaa5;
+  border-radius: 999px;
+  background: #fbefed;
+  box-shadow: 0 0.15rem 0 rgb(89 25 20 / 12%);
+  color: #7d2822;
+}
+
+.record-tool-icon {
+  width: 1.65rem;
+  height: 1.65rem;
+  border-radius: 50%;
   background: #b64136;
-  box-shadow: 0 0.2rem 0 rgb(89 25 20 / 24%);
   color: #ffffff;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
 }
 
 .record-tool-button:hover {
-  background: #a4372e;
+  border-color: #b64136;
+  background: #f7dfdc;
 }
 
 .record-tool-button:active {
   box-shadow: none;
-  transform: translateY(0.15rem);
+  transform: translateY(0.1rem);
 }
 
 .error-toast {
@@ -1152,5 +1164,9 @@ kbd.active {
 
   .tool-button span {
     display: none;
+  }
+
+  .record-tool-button .record-tool-icon {
+    display: grid;
   }
 }

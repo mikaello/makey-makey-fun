@@ -1098,7 +1098,9 @@
         title={t('nav.record')}
         onclick={() => (openPanel = 'record')}
       >
-        <Mic size={18} strokeWidth={2.25} />
+        <span class="record-tool-icon">
+          <Mic size={16} strokeWidth={2.5} />
+        </span>
         <span>{t('nav.record')}</span>
       </button>
       <button
