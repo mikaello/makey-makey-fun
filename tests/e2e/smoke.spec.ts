@@ -68,12 +68,30 @@ test('uses the system language and persists an explicit choice', async ({
   await page.goto('/');
 
   await expect(page.locator('html')).toHaveAttribute('lang', 'nb');
-  await expect(page.getByRole('button', { name: 'Start lyd' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Lyder' })).toBeVisible();
   await page.getByRole('button', { name: 'Velg språk' }).click();
   await page.getByRole('button', { name: 'Engelsk' }).click();
 
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-  await expect(page.getByRole('button', { name: 'Start audio' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sounds' })).toBeVisible();
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+});
+
+test('keeps the manual audio unlock in device diagnostics', async ({
+  page,
+}) => {
+  await page.goto('/');
+
+  await expect(page.getByRole('button', { name: 'Start audio' })).toHaveCount(
+    0,
+  );
+  await page.getByRole('button', { name: 'Test Makey Makey' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Makey Makey test' });
+  await expect(
+    dialog.getByRole('button', { name: 'Start audio' }),
+  ).toBeVisible();
+
+  await dialog.getByRole('button', { name: 'Start audio' }).click();
+  await expect(dialog.getByText('Audio ready')).toBeVisible();
 });

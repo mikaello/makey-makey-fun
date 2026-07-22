@@ -946,23 +946,6 @@
       <p class="eyebrow">Makey Makey</p>
       <h1>{t('sampler')}</h1>
     </div>
-
-    <button
-      class:error={audioState === 'error'}
-      class="audio-status"
-      type="button"
-      onclick={unlockAudio}
-    >
-      {#if audioState === 'error'}
-        <VolumeX size={18} strokeWidth={2.25} />
-        <span>{t('audio.unavailable')}</span>
-      {:else}
-        <Volume2 size={18} strokeWidth={2.25} />
-        <span
-          >{audioState === 'ready' ? t('audio.ready') : t('audio.start')}</span
-        >
-      {/if}
-    </button>
   </header>
 
   <section class="pad-grid" aria-label={t('pads.label')}>
@@ -1689,6 +1672,29 @@
         <div class="input-status" aria-live="polite">
           <Activity size={20} />
           <span>{lastInput ?? t('device.waiting')}</span>
+        </div>
+
+        <div class:error={audioState === 'error'} class="audio-diagnostic">
+          {#if audioState === 'error'}
+            <VolumeX size={20} />
+          {:else}
+            <Volume2 size={20} />
+          {/if}
+          <span>
+            <strong>{t('device.audio')}</strong>
+            <small
+              >{audioState === 'ready'
+                ? t('audio.ready')
+                : audioState === 'error'
+                  ? t('audio.unavailable')
+                  : t('audio.start')}</small
+            >
+          </span>
+          {#if audioState !== 'ready'}
+            <button type="button" onclick={unlockAudio}>
+              {audioState === 'error' ? t('audio.retry') : t('audio.start')}
+            </button>
+          {/if}
         </div>
 
         <div class="key-grid" aria-label={t('device.keyboardInputs')}>

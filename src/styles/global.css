@@ -75,25 +75,6 @@ h1 {
   text-transform: uppercase;
 }
 
-.audio-status {
-  min-height: 2.75rem;
-  padding: 0.625rem 0.75rem;
-  border: 1px solid #c8c4ba;
-  border-radius: 0.5rem;
-  background: #ffffff;
-  color: #28634c;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  font-size: 0.8rem;
-  font-weight: 750;
-  cursor: pointer;
-}
-
-.audio-status.error {
-  color: #a3342a;
-}
-
 .pad-grid {
   min-height: 0;
   display: grid;
@@ -307,6 +288,43 @@ footer {
   align-items: center;
   gap: 0.65rem;
   font-weight: 800;
+}
+
+.audio-diagnostic {
+  min-height: 3.5rem;
+  padding: 0.6rem 0.75rem;
+  border-block: 1px solid #dedbd3;
+  color: #4c4842;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.audio-diagnostic.error {
+  color: #8e3028;
+}
+
+.audio-diagnostic > span {
+  display: grid;
+  gap: 0.08rem;
+}
+
+.audio-diagnostic small {
+  color: #655f56;
+  font-size: 0.7rem;
+}
+
+.audio-diagnostic button {
+  min-height: 2.5rem;
+  margin-left: auto;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid #aaa59b;
+  border-radius: 0.35rem;
+  background: #f5f4f0;
+  color: #2c4f45;
+  font-size: 0.76rem;
+  font-weight: 800;
+  cursor: pointer;
 }
 
 .sound-pad-picker {
