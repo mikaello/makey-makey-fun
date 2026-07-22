@@ -598,6 +598,15 @@
     if (loopPlaying || loopStarting) return;
     loopStarting = true;
     try {
+      audio.primeUserGesture();
+      audio.primeLoopPlayback(
+        project.loop.events.flatMap((event) => {
+          const sampleId = project.pads.find(
+            (pad) => pad.id === event.padId,
+          )?.sampleId;
+          return sampleId ? [sampleId] : [];
+        }),
+      );
       for (const pad of project.pads) {
         if (!pad.sampleId) continue;
         const customSample = samples.get(pad.sampleId);
@@ -624,9 +633,16 @@
     }
   }
 
+  async function startLoopFromPanel(): Promise<void> {
+    const shouldRecord = project.loop.events.length === 0;
+    await startLooper();
+    if (shouldRecord && loopPlaying) loopRecording = true;
+  }
+
   function stopLooper(): void {
     loopScheduler?.stop();
     loopScheduler = null;
+    audio.stopScheduledPlayback();
     for (const timer of loopStepTimers) clearTimeout(timer);
     loopStepTimers.clear();
     loopPlaying = false;
@@ -1277,6 +1293,7 @@
         role="dialog"
         aria-modal="true"
         aria-labelledby="loop-title"
+        aria-describedby="loop-description loop-guidance"
       >
         <header class="panel-header">
           <div>
@@ -1292,6 +1309,10 @@
             <X size={22} />
           </button>
         </header>
+
+        <p id="loop-description" class="loop-description">
+          {t('loop.description')}
+        </p>
 
         <div class:playing={loopPlaying} class="loop-status" aria-live="polite">
           <Repeat2 size={21} />
@@ -1313,6 +1334,20 @@
           >
         </div>
 
+        <p
+          id="loop-guidance"
+          class:recording={loopRecording}
+          class="loop-guidance"
+        >
+          {loopRecording
+            ? t('loop.guidance.recording')
+            : loopPlaying
+              ? t('loop.guidance.playing')
+              : project.loop.events.length > 0
+                ? t('loop.guidance.saved')
+                : t('loop.guidance.empty')}
+        </p>
+
         <div class="loop-pad-grid" aria-label={t('loop.pads')}>
           {#each project.pads as pad, index (pad.id)}
             <button
@@ -1333,7 +1368,7 @@
 
         <div class="loop-settings">
           <label class="tempo-field" for="loop-bpm">
-            <span>BPM</span>
+            <span>{t('loop.tempo')}</span>
             <input
               id="loop-bpm"
               type="number"
@@ -1347,7 +1382,7 @@
           </label>
 
           <fieldset class="bars-field">
-            <legend>{t('loop.bars')}</legend>
+            <legend>{t('loop.length')}</legend>
             <div class="segmented-control">
               {#each [1, 2, 4] as bars (bars)}
                 <button
@@ -1388,16 +1423,20 @@
               class="transport-start"
               type="button"
               disabled={loopStarting}
-              onclick={startLooper}
+              onclick={startLoopFromPanel}
             >
               {#if loopStarting}
                 <LoaderCircle class="spin" size={19} />
               {:else}
                 <Play size={19} fill="currentColor" />
               {/if}
-              <span
-                >{loopStarting ? t('common.starting') : t('common.start')}</span
-              >
+              <span>
+                {loopStarting
+                  ? t('common.starting')
+                  : project.loop.events.length === 0
+                    ? t('loop.startRecording')
+                    : t('loop.play')}
+              </span>
             </button>
           {/if}
           <button
@@ -1408,8 +1447,16 @@
             disabled={!loopPlaying}
             onclick={() => (loopRecording = !loopRecording)}
           >
-            <Circle size={18} fill="currentColor" />
-            <span>{t('loop.record')}</span>
+            {#if loopRecording}
+              <Check size={19} />
+            {:else}
+              <Circle size={18} fill="currentColor" />
+            {/if}
+            <span
+              >{loopRecording
+                ? t('loop.doneAdding')
+                : t('loop.addSounds')}</span
+            >
           </button>
           <button
             class:active={loopMuted}

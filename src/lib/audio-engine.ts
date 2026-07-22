@@ -27,6 +27,9 @@ export class AudioEngine {
   private readonly activeMedia = new Set<HTMLAudioElement>();
   private readonly mediaLoopTimers = new Map<string, number>();
   private readonly loopMedia = new Map<string, HTMLAudioElement>();
+  private readonly scheduledStarterMedia = new Map<string, HTMLAudioElement>();
+  private readonly scheduledMediaTimers = new Set<number>();
+  private readonly scheduledMediaStopTimers = new Map<string, number>();
   private starterLoaded = false;
 
   primeUserGesture(): void {
@@ -51,6 +54,13 @@ export class AudioEngine {
         this.ensureStarterMedia(sound);
       }
       this.starterLoaded = true;
+    }
+  }
+
+  primeLoopPlayback(sampleIds: Iterable<string>): void {
+    for (const sampleId of new Set(sampleIds)) {
+      const sound = starterKit.find((candidate) => candidate.id === sampleId);
+      if (sound) this.primeScheduledMedia(sound);
     }
   }
 
@@ -173,6 +183,12 @@ export class AudioEngine {
       trimStart: number;
     },
   ): void {
+    const starterSound = starterKit.find((sound) => sound.id === sampleId);
+    if (starterSound && this.scheduledStarterMedia.has(sampleId)) {
+      this.scheduleMedia(starterSound, when, options);
+      return;
+    }
+
     const context = this.getContext();
     const buffer = this.buffers.get(sampleId);
     if (!buffer) return;
@@ -193,6 +209,19 @@ export class AudioEngine {
     source.start(when, trim.start, Math.max(0, trim.end - trim.start));
   }
 
+  stopScheduledPlayback(): void {
+    for (const timer of this.scheduledMediaTimers) clearTimeout(timer);
+    for (const timer of this.scheduledMediaStopTimers.values()) {
+      clearTimeout(timer);
+    }
+    for (const media of this.scheduledStarterMedia.values()) {
+      media.pause();
+      media.currentTime = 0;
+    }
+    this.scheduledMediaTimers.clear();
+    this.scheduledMediaStopTimers.clear();
+  }
+
   close(): void {
     for (const source of this.activeSources) source.stop();
     for (const media of this.activeMedia) {
@@ -200,12 +229,14 @@ export class AudioEngine {
       media.currentTime = 0;
     }
     for (const timer of this.mediaLoopTimers.values()) clearInterval(timer);
+    this.stopScheduledPlayback();
     for (const url of this.mediaUrls.values()) URL.revokeObjectURL(url);
     this.activeSources.clear();
     this.activeMedia.clear();
     this.mediaLoopTimers.clear();
     this.loopSources.clear();
     this.loopMedia.clear();
+    this.scheduledStarterMedia.clear();
     this.mediaUrls.clear();
     void this.context?.close();
     this.context = null;
@@ -280,6 +311,60 @@ export class AudioEngine {
     }
 
     void media.play();
+    this.primeScheduledMedia(sound);
+  }
+
+  private primeScheduledMedia(sound: StarterSound): void {
+    const media = this.ensureScheduledMedia(sound);
+    media.volume = 0;
+    this.seekMedia(media, 0);
+    void media.play().catch(() => undefined);
+  }
+
+  private ensureScheduledMedia(sound: StarterSound): HTMLAudioElement {
+    const cached = this.scheduledStarterMedia.get(sound.id);
+    if (cached) return cached;
+    const media = new Audio(this.ensureStarterMedia(sound));
+    media.preload = 'auto';
+    this.scheduledStarterMedia.set(sound.id, media);
+    return media;
+  }
+
+  private scheduleMedia(
+    sound: StarterSound,
+    when: number,
+    options: {
+      gain: number;
+      trimEnd: number | null;
+      trimStart: number;
+    },
+  ): void {
+    const context = this.getContext();
+    const delay = Math.max(0, (when - context.currentTime) * 1000);
+    const timer = window.setTimeout(() => {
+      this.scheduledMediaTimers.delete(timer);
+      const media = this.ensureScheduledMedia(sound);
+      const trim = normalizeTrim(
+        sound.duration,
+        options.trimStart,
+        options.trimEnd,
+      );
+      const previousStop = this.scheduledMediaStopTimers.get(sound.id);
+      if (previousStop) clearTimeout(previousStop);
+      media.volume = Math.max(0, Math.min(1, options.gain));
+      this.seekMedia(media, trim.start);
+      void media.play().catch(() => undefined);
+      const stopTimer = window.setTimeout(
+        () => {
+          media.pause();
+          media.currentTime = 0;
+          this.scheduledMediaStopTimers.delete(sound.id);
+        },
+        Math.max(0, (trim.end - trim.start) * 1000),
+      );
+      this.scheduledMediaStopTimers.set(sound.id, stopTimer);
+    }, delay);
+    this.scheduledMediaTimers.add(timer);
   }
 
   private startMediaLoopTimer(

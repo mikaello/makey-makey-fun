@@ -202,8 +202,9 @@ test('plays pads from touch events without relying on pointer events', async ({
       }
 
       play() {
-        win.__audioEvents?.push('media-play');
-        win.__mediaPlays = (win.__mediaPlays ?? 0) + 1;
+        const audible = this.volume > 0;
+        win.__audioEvents?.push(audible ? 'media-play' : 'media-prime');
+        if (audible) win.__mediaPlays = (win.__mediaPlays ?? 0) + 1;
         return Promise.resolve();
       }
     }
@@ -260,6 +261,7 @@ test('plays pads from touch events without relying on pointer events', async ({
       [],
   );
   expect(audioEvents[0]).toBe('unlock-start');
+  expect(audioEvents).toContain('media-prime');
   expect(audioEvents.indexOf('resume')).toBeLessThan(
     audioEvents.indexOf('media-play'),
   );

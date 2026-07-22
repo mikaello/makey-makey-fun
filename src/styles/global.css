@@ -541,6 +541,13 @@ footer {
   opacity: 0.58;
 }
 
+.loop-description {
+  margin: -0.15rem 0 0;
+  color: #5f5a52;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
 .loop-status {
   min-height: 3.6rem;
   padding: 0.65rem 0.75rem;
@@ -577,6 +584,24 @@ footer {
   margin-left: auto;
   font-size: 0.72rem;
   font-weight: 800;
+}
+
+.loop-guidance {
+  margin: 0;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid #d6d2c8;
+  border-radius: 0.35rem;
+  background: #fffdf7;
+  color: #4c4842;
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.loop-guidance.recording {
+  border-color: #d9aaa5;
+  background: #fff7f5;
+  color: #7c312a;
 }
 
 .loop-pad-grid {
