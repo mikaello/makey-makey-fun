@@ -8,6 +8,7 @@ const english = {
   'audio.unavailable': 'Audio unavailable',
   'audio.ready': 'Audio ready',
   'audio.start': 'Start audio',
+  'audio.retry': 'Retry audio',
   'pads.label': 'Sampler pads',
   'pad.label': 'Pad {number}: {name}',
   'pad.select': 'Select pad {number}',
@@ -90,6 +91,7 @@ const english = {
   'device.title': 'Makey Makey test',
   'device.waiting': 'Waiting for input',
   'device.keyboardInputs': 'Keyboard inputs',
+  'device.audio': 'Audio',
   'device.primaryClick': 'Primary click',
   'device.triggersPad': 'Triggers pad 12',
   'error.storageUnavailable':
@@ -142,6 +144,7 @@ const norwegian: Record<TranslationKey, string> = {
   'audio.unavailable': 'Lyd er utilgjengelig',
   'audio.ready': 'Lyd er klar',
   'audio.start': 'Start lyd',
+  'audio.retry': 'Prøv lyd på nytt',
   'pads.label': 'Samplerpads',
   'pad.label': 'Pad {number}: {name}',
   'pad.select': 'Velg pad {number}',
@@ -224,6 +227,7 @@ const norwegian: Record<TranslationKey, string> = {
   'device.title': 'Makey Makey-test',
   'device.waiting': 'Venter på inndata',
   'device.keyboardInputs': 'Tastaturinndata',
+  'device.audio': 'Lyd',
   'device.primaryClick': 'Primærklikk',
   'device.triggersPad': 'Utløser pad 12',
   'error.storageUnavailable':
