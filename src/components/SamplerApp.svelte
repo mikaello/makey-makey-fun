@@ -1081,17 +1081,6 @@
     <span class="project-name">{displayProjectName()}</span>
     <span class="footer-actions">
       <button
-        class:active={loopPlaying}
-        class="tool-button"
-        type="button"
-        aria-label={t('nav.loop.open')}
-        title={t('loop.title')}
-        onclick={() => (openPanel = 'loop')}
-      >
-        <Repeat2 size={18} strokeWidth={2.25} />
-        <span>{t('nav.loop')}</span>
-      </button>
-      <button
         class="tool-button record-tool-button"
         type="button"
         aria-label={t('nav.record')}
@@ -1102,6 +1091,17 @@
           <Mic size={16} strokeWidth={2.5} />
         </span>
         <span>{t('nav.record')}</span>
+      </button>
+      <button
+        class:active={loopPlaying}
+        class="tool-button"
+        type="button"
+        aria-label={t('nav.loop.open')}
+        title={t('loop.title')}
+        onclick={() => (openPanel = 'loop')}
+      >
+        <Repeat2 size={18} strokeWidth={2.25} />
+        <span>{t('nav.loop')}</span>
       </button>
       <button
         class="tool-button"
