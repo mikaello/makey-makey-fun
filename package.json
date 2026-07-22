@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build",
+    "build": "astro build && node scripts/build-service-worker.mjs",
     "preview": "astro preview",
     "check": "astro check",
     "lint": "eslint .",
@@ -24,6 +24,7 @@
   },
   "devDependencies": {
     "@astrojs/check": "0.9.9",
+    "@axe-core/playwright": "4.12.1",
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.61.1",
     "@types/node": "26.1.1",
@@ -38,6 +39,7 @@
     "svelte-check": "4.7.3",
     "typescript": "6.0.3",
     "typescript-eslint": "8.65.0",
-    "vitest": "4.1.10"
+    "vitest": "4.1.10",
+    "workbox-build": "7.4.1"
   }
 }
