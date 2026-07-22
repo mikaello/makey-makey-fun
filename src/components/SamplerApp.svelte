@@ -6,12 +6,17 @@
     FolderOpen,
     Library,
     LoaderCircle,
+    Mic,
     MousePointer2,
+    Play,
     PlugZap,
+    RefreshCw,
     RotateCcw,
+    Square,
     Upload,
     Volume2,
     VolumeX,
+    Check,
     X,
   } from '@lucide/svelte';
   import { onDestroy, onMount } from 'svelte';
@@ -30,6 +35,11 @@
     PortableProjectError,
   } from '../lib/portable-project';
   import {
+    MicrophoneRecorder,
+    microphoneErrorMessage,
+    type RecordingResult,
+  } from '../lib/microphone-recorder';
+  import {
     assignSampleToPad,
     createDefaultProject,
     resetProjectToStarterKit,
@@ -45,7 +55,9 @@
   } from '../lib/storage';
 
   type ActivePointer = { padId: string; sourceId: string };
-  type OpenPanel = 'device' | 'sounds' | null;
+  type OpenPanel = 'device' | 'record' | 'sounds' | null;
+  type RecordingState =
+    'idle' | 'requesting' | 'recording' | 'preview' | 'saving';
 
   const MAX_SAMPLE_BYTES = 25 * 1024 * 1024;
   const audio = new AudioEngine();
@@ -64,6 +76,12 @@
   let mouseBindingEnabled = false;
   let uploadBusy = false;
   let portabilityBusy = false;
+  let recordingState: RecordingState = 'idle';
+  let recordingSession: MicrophoneRecorder | null = null;
+  let pendingRecording: (RecordingResult & { id: string }) | null = null;
+  let recordingElapsed = 0;
+  let recordingTimer: ReturnType<typeof setInterval> | null = null;
+  let recordingError = '';
   let lastInput = 'Waiting for input';
   let errorMessage = '';
 
@@ -71,7 +89,10 @@
     clientReady = true;
     void restoreWorkspace();
   });
-  onDestroy(() => audio.close());
+  onDestroy(() => {
+    cancelRecording();
+    audio.close();
+  });
 
   async function restoreWorkspace(): Promise<void> {
     try {
@@ -133,7 +154,7 @@
 
   function handleKeyDown(event: KeyboardEvent): void {
     if (event.key === 'Escape' && openPanel) {
-      openPanel = null;
+      closePanel();
       return;
     }
     if (isEditableTarget(event.target)) return;
@@ -273,7 +294,7 @@
       for (const sample of imported.samples) samples.set(sample.id, sample);
       project = imported.project;
       selectedPadId = project.pads[0]?.id ?? '';
-      openPanel = null;
+      closePanel();
     } catch (error) {
       errorMessage =
         error instanceof PortableProjectError
@@ -292,6 +313,131 @@
       audioState = 'error';
       showError(error, 'Audio is unavailable in this browser.');
     }
+  }
+
+  async function startRecording(): Promise<void> {
+    clearPendingRecording();
+    recordingError = '';
+    recordingState = 'requesting';
+    recordingElapsed = 0;
+
+    try {
+      recordingSession = await MicrophoneRecorder.create();
+      recordingSession.start();
+      recordingState = 'recording';
+      const startedAt = Date.now();
+      recordingTimer = setInterval(() => {
+        recordingElapsed = (Date.now() - startedAt) / 1000;
+      }, 100);
+    } catch (error) {
+      recordingSession = null;
+      recordingState = 'idle';
+      recordingError = microphoneErrorMessage(error);
+    }
+  }
+
+  async function stopRecording(): Promise<void> {
+    if (!recordingSession || recordingState !== 'recording') return;
+    stopRecordingTimer();
+
+    try {
+      const result = await recordingSession.stop();
+      pendingRecording = { ...result, id: crypto.randomUUID() };
+      recordingElapsed = result.duration;
+      recordingState = 'preview';
+    } catch (error) {
+      recordingState = 'idle';
+      recordingError = microphoneErrorMessage(error);
+    } finally {
+      recordingSession = null;
+    }
+  }
+
+  async function previewRecording(): Promise<void> {
+    if (!pendingRecording) return;
+    try {
+      if (!audio.hasSample(pendingRecording.id)) {
+        await audio.decodeSample(pendingRecording.id, pendingRecording.blob);
+      }
+      await audio.trigger(pendingRecording.id);
+      audioState = 'ready';
+    } catch (error) {
+      showError(error, 'This recording could not be previewed.');
+    }
+  }
+
+  async function acceptRecording(): Promise<void> {
+    const pad = project.pads.find(
+      (candidate) => candidate.id === selectedPadId,
+    );
+    if (!pad || !pendingRecording) return;
+    recordingState = 'saving';
+
+    const sample: SampleRecord = {
+      id: pendingRecording.id,
+      projectId: project.id,
+      name: nextRecordingName(),
+      blob: pendingRecording.blob,
+      mimeType: pendingRecording.mimeType,
+      duration: pendingRecording.duration,
+      createdAt: new Date().toISOString(),
+    };
+
+    try {
+      const updatedProject = assignSampleToPad(project, pad.id, sample);
+      await saveSampleAssignment(updatedProject, sample);
+      samples.set(sample.id, sample);
+      project = updatedProject;
+      pendingRecording = null;
+      recordingState = 'idle';
+      closePanel();
+    } catch (error) {
+      recordingState = 'preview';
+      showError(error, 'This recording could not be saved.');
+    }
+  }
+
+  function retryRecording(): void {
+    clearPendingRecording();
+    void startRecording();
+  }
+
+  function cancelRecording(): void {
+    recordingSession?.cancel();
+    recordingSession = null;
+    stopRecordingTimer();
+    clearPendingRecording();
+    recordingElapsed = 0;
+    recordingError = '';
+    recordingState = 'idle';
+  }
+
+  function closePanel(): void {
+    if (openPanel === 'record') cancelRecording();
+    openPanel = null;
+  }
+
+  function clearPendingRecording(): void {
+    if (pendingRecording) audio.removeSample(pendingRecording.id);
+    pendingRecording = null;
+  }
+
+  function stopRecordingTimer(): void {
+    if (recordingTimer) clearInterval(recordingTimer);
+    recordingTimer = null;
+  }
+
+  function nextRecordingName(): string {
+    const count = [...samples.values()].filter((sample) =>
+      sample.name.startsWith('Recording '),
+    ).length;
+    return `Recording ${String(count + 1).padStart(2, '0')}`;
+  }
+
+  function formattedRecordingTime(seconds: number): string {
+    const wholeSeconds = Math.floor(seconds);
+    const minutes = Math.floor(wholeSeconds / 60);
+    return `${minutes}:${String(wholeSeconds % 60).padStart(2, '0')}`;
   }
 
   function setPadActive(
@@ -433,6 +579,14 @@
       <button
         class="tool-button"
         type="button"
+        onclick={() => (openPanel = 'record')}
+      >
+        <Mic size={18} strokeWidth={2.25} />
+        <span>Record</span>
+      </button>
+      <button
+        class="tool-button"
+        type="button"
         onclick={() => (openPanel = 'sounds')}
       >
         <Library size={18} strokeWidth={2.25} />
@@ -471,7 +625,7 @@
       class="dialog-backdrop"
       type="button"
       aria-label="Close panel"
-      onclick={() => (openPanel = null)}
+      onclick={closePanel}
     ></button>
 
     {#if openPanel === 'sounds'}
@@ -490,7 +644,7 @@
             class="icon-button"
             type="button"
             aria-label="Close"
-            onclick={() => (openPanel = null)}
+            onclick={closePanel}
           >
             <X size={22} />
           </button>
@@ -579,6 +733,126 @@
           </button>
         </div>
       </section>
+    {:else if openPanel === 'record'}
+      <section
+        class="device-panel record-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="record-title"
+      >
+        <header class="panel-header">
+          <div>
+            <p class="eyebrow">Microphone</p>
+            <h2 id="record-title">Record a sound</h2>
+          </div>
+          <button
+            class="icon-button"
+            type="button"
+            aria-label="Close"
+            onclick={closePanel}
+          >
+            <X size={22} />
+          </button>
+        </header>
+
+        <div class="sound-pad-picker" aria-label="Choose a pad">
+          {#each project.pads as pad, index (pad.id)}
+            <button
+              class:selected={selectedPadId === pad.id}
+              type="button"
+              aria-label={`Select pad ${index + 1}`}
+              aria-pressed={selectedPadId === pad.id}
+              disabled={recordingState !== 'idle'}
+              style={`--picker-color: ${pad.color}`}
+              onclick={() => (selectedPadId = pad.id)}
+            >
+              {String(index + 1).padStart(2, '0')}
+            </button>
+          {/each}
+        </div>
+
+        <div
+          class:recording={recordingState === 'recording'}
+          class="recorder-status"
+          aria-live="polite"
+        >
+          <span class="recording-indicator"><Mic size={22} /></span>
+          <span>
+            <small>
+              {recordingState === 'preview'
+                ? 'Ready to save'
+                : recordingState === 'recording'
+                  ? 'Recording'
+                  : 'Selected pad'}
+            </small>
+            <strong>
+              {recordingState === 'recording' || recordingState === 'preview'
+                ? formattedRecordingTime(recordingElapsed)
+                : project.pads.find((pad) => pad.id === selectedPadId)?.label}
+            </strong>
+          </span>
+        </div>
+
+        {#if recordingError}
+          <p class="recording-error" role="alert">{recordingError}</p>
+        {/if}
+
+        {#if recordingState === 'preview' || recordingState === 'saving'}
+          <div class="recording-actions preview-actions">
+            <button
+              class="secondary-action"
+              type="button"
+              disabled={recordingState === 'saving'}
+              onclick={previewRecording}
+            >
+              <Play size={19} />
+              <span>Preview</span>
+            </button>
+            <button
+              class="primary-action"
+              type="button"
+              disabled={recordingState === 'saving'}
+              onclick={acceptRecording}
+            >
+              {#if recordingState === 'saving'}
+                <LoaderCircle class="spin" size={19} />
+              {:else}
+                <Check size={19} />
+              {/if}
+              <span>{recordingState === 'saving' ? 'Saving' : 'Accept'}</span>
+            </button>
+            <button
+              class="secondary-action retry-action"
+              type="button"
+              disabled={recordingState === 'saving'}
+              onclick={retryRecording}
+            >
+              <RefreshCw size={19} />
+              <span>Retry</span>
+            </button>
+          </div>
+        {:else if recordingState === 'recording'}
+          <button class="stop-recording" type="button" onclick={stopRecording}>
+            <Square size={19} fill="currentColor" />
+            <span>Stop recording</span>
+          </button>
+        {:else}
+          <button
+            class="start-recording"
+            type="button"
+            disabled={recordingState === 'requesting'}
+            onclick={startRecording}
+          >
+            {#if recordingState === 'requesting'}
+              <LoaderCircle class="spin" size={20} />
+              <span>Waiting for permission</span>
+            {:else}
+              <Mic size={20} />
+              <span>Start recording</span>
+            {/if}
+          </button>
+        {/if}
+      </section>
     {:else}
       <section
         class="device-panel"
@@ -595,7 +869,7 @@
             class="icon-button"
             type="button"
             aria-label="Close"
-            onclick={() => (openPanel = null)}
+            onclick={closePanel}
           >
             <X size={22} />
           </button>

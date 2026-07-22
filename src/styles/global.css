@@ -321,6 +321,11 @@ footer {
   box-shadow: inset 0 0 0 2px #ffffff;
 }
 
+.sound-pad-picker button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .selected-sound {
   min-width: 0;
   min-height: 3.5rem;
@@ -415,6 +420,103 @@ footer {
   color: #4c4842;
 }
 
+.primary-action:disabled,
+.secondary-action:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+.recorder-status {
+  min-height: 4.25rem;
+  padding: 0.75rem;
+  border-block: 1px solid #dedbd3;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.recording-indicator {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 50%;
+  background: #eceae4;
+  color: #5d5850;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+}
+
+.recorder-status.recording .recording-indicator {
+  background: #b64136;
+  color: #ffffff;
+  animation: record-pulse 1.2s ease-in-out infinite;
+}
+
+.recorder-status > span:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 0.1rem;
+}
+
+.recorder-status small {
+  color: #655f56;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.recorder-status strong {
+  overflow: hidden;
+  font-size: 1.05rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recording-error {
+  margin: 0;
+  padding: 0.7rem 0.75rem;
+  border-left: 0.3rem solid #b64136;
+  background: #fbefed;
+  color: #7d2822;
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
+.start-recording,
+.stop-recording {
+  min-height: 3.25rem;
+  padding: 0.7rem 1rem;
+  border: 1px solid #8e3028;
+  border-radius: 0.4rem;
+  background: #b64136;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  font-size: 0.84rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.start-recording:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.stop-recording {
+  background: #8e3028;
+}
+
+.recording-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.retry-action {
+  grid-column: 1 / -1;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -434,6 +536,12 @@ footer {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes record-pulse {
+  50% {
+    opacity: 0.68;
   }
 }
 
@@ -535,5 +643,19 @@ kbd.active {
 
   .spin {
     animation: none;
+  }
+
+  .recorder-status.recording .recording-indicator {
+    animation: none;
+  }
+}
+
+@media (max-width: 23rem) {
+  .project-name {
+    display: none;
+  }
+
+  footer {
+    justify-content: flex-end;
   }
 }
