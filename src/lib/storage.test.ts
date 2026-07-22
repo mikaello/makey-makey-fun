@@ -7,6 +7,7 @@ import {
   clearSamplerDatabase,
   deleteSamplesForProject,
   loadWorkspace,
+  replaceWorkspace,
   saveProject,
   saveSample,
 } from './storage';
@@ -42,5 +43,25 @@ describe('local workspace storage', () => {
     expect((await loadWorkspace()).samples).toHaveLength(1);
     await deleteSamplesForProject(project.id);
     expect((await loadWorkspace()).samples).toHaveLength(0);
+  });
+
+  it('atomically replaces the current workspace', async () => {
+    const first = createDefaultProject({ id: 'project-1' });
+    await saveProject(first);
+    await saveSample({
+      id: 'old-sample',
+      projectId: first.id,
+      name: 'Old',
+      blob: new Blob(['old']),
+      mimeType: 'audio/wav',
+      duration: 1,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    const replacement = createDefaultProject({ id: 'project-2' });
+    await replaceWorkspace(replacement, []);
+    const restored = await loadWorkspace();
+    expect(restored.project.id).toBe('project-2');
+    expect(restored.samples).toEqual([]);
   });
 });

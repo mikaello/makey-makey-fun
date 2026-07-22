@@ -120,6 +120,28 @@ export async function resetWorkspace(project: ProjectV1): Promise<void> {
   await transaction.done;
 }
 
+export async function replaceWorkspace(
+  project: ProjectV1,
+  samples: SampleRecord[],
+): Promise<void> {
+  const database = await getDatabase();
+  const storedSamples = await Promise.all(samples.map(toStoredSample));
+  const transaction = database.transaction(
+    ['projects', 'samples', 'meta'],
+    'readwrite',
+  );
+  await transaction.objectStore('projects').clear();
+  await transaction.objectStore('samples').clear();
+  await transaction.objectStore('meta').clear();
+  await transaction.objectStore('projects').put(project);
+  for (const sample of storedSamples)
+    await transaction.objectStore('samples').put(sample);
+  await transaction
+    .objectStore('meta')
+    .put({ key: ACTIVE_PROJECT_KEY, value: project.id });
+  await transaction.done;
+}
+
 export async function clearSamplerDatabase(): Promise<void> {
   if (databasePromise) {
     const database = await databasePromise;
