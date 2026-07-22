@@ -85,20 +85,26 @@
     'idle' | 'requesting' | 'recording' | 'preview' | 'saving';
 
   const MAX_SAMPLE_BYTES = 25 * 1024 * 1024;
+  const CLICK_FALLBACK_SUPPRESSION_MS = 700;
+  const CLICK_ACTIVE_MS = 120;
   const audio = new AudioEngine();
   const pointerPads = new SvelteMap<number, ActivePointer>();
+  const touchPads = new SvelteMap<number, ActivePointer>();
   const activePadSources = new SvelteMap<string, SvelteSet<string>>();
   const activePads = new SvelteSet<string>();
   const activeInputs = new SvelteSet<MakeyKeyboardCode>();
   const loopingPads = new SvelteSet<string>();
   const samples = new SvelteMap<string, SampleRecord>();
   const loopStepTimers = new SvelteSet<ReturnType<typeof setTimeout>>();
+  const clickActiveTimers = new SvelteSet<ReturnType<typeof setTimeout>>();
+  const recentDirectPadGestures = new SvelteMap<string, number>();
 
   let project: ProjectV1 = createDefaultProject();
   let selectedPadId = project.pads[0]?.id ?? '';
   let audioState: AudioEngineState = 'locked';
   let clientReady = false;
   let storageReady = false;
+  let touchEventsSupported = false;
   let openPanel: OpenPanel = null;
   let mouseBindingEnabled = false;
   let uploadBusy = false;
@@ -139,6 +145,7 @@
 
   onMount(() => {
     clientReady = true;
+    touchEventsSupported = 'TouchEvent' in window;
     let storedPreference: string | null = null;
     try {
       storedPreference = localStorage.getItem(LANGUAGE_STORAGE_KEY);
@@ -154,6 +161,8 @@
   onDestroy(() => {
     cancelRecording();
     stopLooper();
+    for (const timer of clickActiveTimers) clearTimeout(timer);
+    clickActiveTimers.clear();
     audio.close();
   });
 
@@ -196,9 +205,7 @@
   }
 
   function handlePointerDown(event: PointerEvent, pad: Pad): void {
-    event.preventDefault();
-    const button = event.currentTarget as HTMLButtonElement;
-    if (event.isTrusted) button.setPointerCapture(event.pointerId);
+    if (event.pointerType === 'touch' && touchEventsSupported) return;
 
     const isMappedMouse =
       mouseBindingEnabled &&
@@ -207,11 +214,21 @@
     const targetPad = isMappedMouse ? project.pads[11] : pad;
     if (!targetPad) return;
 
+    event.preventDefault();
+    const button = event.currentTarget as HTMLButtonElement;
+    if (event.isTrusted && button.setPointerCapture) {
+      try {
+        button.setPointerCapture(event.pointerId);
+      } catch {
+        // The press can still be tracked by pointerup/cancel in browsers
+        // that reject capture for this pointer.
+      }
+    }
+
     const sourceId = `pointer:${event.pointerId}`;
     pointerPads.set(event.pointerId, { padId: targetPad.id, sourceId });
-    setPadActive(targetPad.id, sourceId, true);
+    pressPad(targetPad, sourceId);
     if (isMappedMouse) lastInput = t('device.primaryClick');
-    void playPad(targetPad);
   }
 
   function handlePointerEnd(event: PointerEvent): void {
@@ -219,6 +236,35 @@
     if (!activePointer) return;
     pointerPads.delete(event.pointerId);
     setPadActive(activePointer.padId, activePointer.sourceId, false);
+  }
+
+  function handleTouchStart(event: TouchEvent, pad: Pad): void {
+    event.preventDefault();
+    for (const touch of event.changedTouches) {
+      const sourceId = `touch:${touch.identifier}`;
+      touchPads.set(touch.identifier, { padId: pad.id, sourceId });
+      pressPad(pad, sourceId);
+    }
+  }
+
+  function handleTouchEnd(event: TouchEvent): void {
+    for (const touch of event.changedTouches) {
+      const activeTouch = touchPads.get(touch.identifier);
+      if (!activeTouch) continue;
+      touchPads.delete(touch.identifier);
+      setPadActive(activeTouch.padId, activeTouch.sourceId, false);
+    }
+  }
+
+  function handlePadClick(pad: Pad): void {
+    if (recentlyHandledDirectPadGesture(pad.id)) return;
+    const sourceId = `click:${Date.now()}`;
+    pressPad(pad, sourceId);
+    const timer = setTimeout(() => {
+      setPadActive(pad.id, sourceId, false);
+      clickActiveTimers.delete(timer);
+    }, CLICK_ACTIVE_MS);
+    clickActiveTimers.add(timer);
   }
 
   function handleKeyDown(event: KeyboardEvent): void {
@@ -268,6 +314,8 @@
       if (pad) setPadActive(pad.id, `key:${code}`, false);
     }
     activeInputs.clear();
+    releasePadSources(pointerPads);
+    releasePadSources(touchPads);
   }
 
   async function handleUpload(event: Event): Promise<void> {
@@ -824,6 +872,24 @@
     }
   }
 
+  function pressPad(pad: Pad, sourceId: string): void {
+    recentDirectPadGestures.set(pad.id, performance.now());
+    setPadActive(pad.id, sourceId, true);
+    void playPad(pad);
+  }
+
+  function recentlyHandledDirectPadGesture(padId: string): boolean {
+    const lastGestureAt = recentDirectPadGestures.get(padId) ?? 0;
+    return performance.now() - lastGestureAt < CLICK_FALLBACK_SUPPRESSION_MS;
+  }
+
+  function releasePadSources(sources: SvelteMap<number, ActivePointer>): void {
+    for (const source of sources.values()) {
+      setPadActive(source.padId, source.sourceId, false);
+    }
+    sources.clear();
+  }
+
   function padBindingLabel(pad: Pad): string {
     if (pad.binding.type === 'mouse-primary') return t('pad.click');
     return (
@@ -964,6 +1030,10 @@
         onpointerup={handlePointerEnd}
         onpointercancel={handlePointerEnd}
         onlostpointercapture={handlePointerEnd}
+        ontouchstart={(event) => handleTouchStart(event, pad)}
+        ontouchend={handleTouchEnd}
+        ontouchcancel={handleTouchEnd}
+        onclick={() => handlePadClick(pad)}
       >
         <span class="pad-meta">
           <span class="pad-number">{String(index + 1).padStart(2, '0')}</span>

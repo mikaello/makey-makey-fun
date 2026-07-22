@@ -32,20 +32,23 @@ test('supports simultaneous pointer presses without changing the pad layout', as
 
   const pressed = await page.evaluate(async () => {
     const buttons = [...document.querySelectorAll<HTMLButtonElement>('.pad')];
-    buttons[0]?.dispatchEvent(
-      new PointerEvent('pointerdown', {
-        bubbles: true,
-        pointerId: 1,
-        pointerType: 'touch',
-      }),
-    );
-    buttons[1]?.dispatchEvent(
-      new PointerEvent('pointerdown', {
-        bubbles: true,
-        pointerId: 2,
-        pointerType: 'touch',
-      }),
-    );
+    const firstTouchStart = new Event('touchstart', {
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(firstTouchStart, 'changedTouches', {
+      value: [{ identifier: 1 }],
+    });
+    buttons[0]?.dispatchEvent(firstTouchStart);
+
+    const secondTouchStart = new Event('touchstart', {
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(secondTouchStart, 'changedTouches', {
+      value: [{ identifier: 2 }],
+    });
+    buttons[1]?.dispatchEvent(secondTouchStart);
     await new Promise(requestAnimationFrame);
     return buttons
       .slice(0, 2)

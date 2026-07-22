@@ -55,24 +55,25 @@ test('keeps touch separate from the optional primary-click binding', async ({
     const first = buttons[0];
     if (!first) return [];
 
-    first.dispatchEvent(
-      new PointerEvent('pointerdown', {
-        bubbles: true,
-        button: 0,
-        pointerId: 1,
-        pointerType: 'touch',
-      }),
-    );
+    const touchStart = new Event('touchstart', {
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(touchStart, 'changedTouches', {
+      value: [{ identifier: 1 }],
+    });
+    first.dispatchEvent(touchStart);
     await new Promise(requestAnimationFrame);
     const touch = buttons.map((button) => button.getAttribute('aria-pressed'));
-    first.dispatchEvent(
-      new PointerEvent('pointerup', {
-        bubbles: true,
-        button: 0,
-        pointerId: 1,
-        pointerType: 'touch',
-      }),
-    );
+
+    const touchEnd = new Event('touchend', {
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(touchEnd, 'changedTouches', {
+      value: [{ identifier: 1 }],
+    });
+    first.dispatchEvent(touchEnd);
     await new Promise(requestAnimationFrame);
 
     first.dispatchEvent(
@@ -85,6 +86,15 @@ test('keeps touch separate from the optional primary-click binding', async ({
     );
     await new Promise(requestAnimationFrame);
     const mouse = buttons.map((button) => button.getAttribute('aria-pressed'));
+    first.dispatchEvent(
+      new PointerEvent('pointerup', {
+        bubbles: true,
+        button: 0,
+        pointerId: 2,
+        pointerType: 'mouse',
+      }),
+    );
+    await new Promise(requestAnimationFrame);
     return [touch, mouse];
   });
 
@@ -92,4 +102,145 @@ test('keeps touch separate from the optional primary-click binding', async ({
   expect(pressedStates[0]?.[11]).toBe('false');
   expect(pressedStates[1]?.[0]).toBe('false');
   expect(pressedStates[1]?.[11]).toBe('true');
+});
+
+test('plays pads from touch events without relying on pointer events', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const win = window as typeof window & {
+      __audioEvents?: string[];
+      __audioStarts?: number;
+    };
+    win.__audioEvents = [];
+    win.__audioStarts = 0;
+
+    class FakeAudioBuffer {
+      duration: number;
+      length: number;
+      numberOfChannels = 1;
+      sampleRate: number;
+      private data: Float32Array;
+
+      constructor(channelCount: number, length: number, sampleRate: number) {
+        this.length = length;
+        this.sampleRate = sampleRate;
+        this.duration = length / sampleRate;
+        this.numberOfChannels = channelCount;
+        this.data = new Float32Array(length);
+      }
+
+      getChannelData() {
+        return this.data;
+      }
+    }
+
+    class FakeAudioContext {
+      destination = {};
+      sampleRate = 44100;
+      state = 'suspended';
+
+      close() {
+        return Promise.resolve();
+      }
+
+      createBuffer(channelCount: number, length: number, sampleRate: number) {
+        return new FakeAudioBuffer(channelCount, length, sampleRate);
+      }
+
+      createBufferSource() {
+        return {
+          addEventListener() {},
+          buffer: null,
+          connect(node: unknown) {
+            return node;
+          },
+          loop: false,
+          loopEnd: 0,
+          loopStart: 0,
+          start() {
+            win.__audioEvents?.push('start');
+            win.__audioStarts = (win.__audioStarts ?? 0) + 1;
+          },
+          stop() {},
+        };
+      }
+
+      createGain() {
+        return {
+          connect(node: unknown) {
+            return node;
+          },
+          gain: { value: 1 },
+        };
+      }
+
+      decodeAudioData() {
+        return Promise.resolve(new FakeAudioBuffer(1, 4410, 44100));
+      }
+
+      resume() {
+        win.__audioEvents?.push('resume');
+        this.state = 'running';
+        return Promise.resolve();
+      }
+    }
+
+    Object.defineProperty(window, 'AudioContext', {
+      configurable: true,
+      value: FakeAudioContext,
+    });
+  });
+  await page.goto('/');
+  await page.locator('main[data-client-ready="true"]').waitFor();
+
+  const upPad = page.getByRole('button', { name: 'Pad 1: Kick' });
+  await page.evaluate(() => {
+    const button = document.querySelector<HTMLButtonElement>('.pad');
+    if (!button) return;
+
+    const touchStart = new Event('touchstart', {
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(touchStart, 'changedTouches', {
+      value: [{ identifier: 7 }],
+    });
+    button.dispatchEvent(touchStart);
+  });
+
+  await expect(upPad).toHaveAttribute('aria-pressed', 'true');
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as typeof window & { __audioStarts?: number }).__audioStarts,
+      ),
+    )
+    .toBe(1);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as typeof window & { __audioEvents?: string[] })
+            .__audioEvents?.[0],
+      ),
+    )
+    .toBe('start');
+
+  await page.evaluate(() => {
+    const button = document.querySelector<HTMLButtonElement>('.pad');
+    if (!button) return;
+
+    const touchEnd = new Event('touchend', {
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(touchEnd, 'changedTouches', {
+      value: [{ identifier: 7 }],
+    });
+    button.dispatchEvent(touchEnd);
+  });
+
+  await expect(upPad).toHaveAttribute('aria-pressed', 'false');
 });
