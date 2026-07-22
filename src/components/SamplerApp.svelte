@@ -1,5 +1,5 @@
 <script lang="ts">
-  const pads = Array.from({ length: 12 }, (_, index) => index + 1);
+  import { padNumbers } from '../lib/pads';
 </script>
 
 <main class="app-shell">
@@ -12,7 +12,7 @@
   </header>
 
   <section class="pad-grid" aria-label="Sampler pads">
-    {#each pads as pad (pad)}
+    {#each padNumbers as pad (pad)}
       <button class="pad" type="button" disabled aria-label={`Pad ${pad}`}>
         <span>{pad}</span>
         <small>Empty</small>
