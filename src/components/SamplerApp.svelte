@@ -1092,7 +1092,7 @@
         <span>{t('nav.loop')}</span>
       </button>
       <button
-        class="tool-button"
+        class="tool-button record-tool-button"
         type="button"
         aria-label={t('nav.record')}
         title={t('nav.record')}
