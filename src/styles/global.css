@@ -985,6 +985,39 @@ kbd.active {
   accent-color: #26745c;
 }
 
+.language-description {
+  margin: 0;
+  color: #655f56;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.language-options {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.language-options button {
+  min-height: 3.25rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid #c8c4ba;
+  border-radius: 0.4rem;
+  background: #f5f4f0;
+  color: #4c4842;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.language-options button.active {
+  border-color: #26745c;
+  background: #eff7f4;
+  color: #205d4d;
+}
+
 @media (min-width: 42rem) and (orientation: landscape) {
   .app-shell {
     gap: 1rem;

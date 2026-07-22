@@ -8,6 +8,7 @@
     FileAudio,
     FolderOpen,
     Library,
+    Languages,
     LoaderCircle,
     Mic,
     MousePointer2,
@@ -34,6 +35,15 @@
     normalizeMakeyKey,
     type MakeyKeyboardCode,
   } from '../lib/input';
+  import {
+    isLanguagePreference,
+    LANGUAGE_STORAGE_KEY,
+    resolveLocale,
+    translate,
+    type LanguagePreference,
+    type Locale,
+    type TranslationKey,
+  } from '../lib/i18n';
   import { LookAheadScheduler, quantizeElapsedToStep } from '../lib/looper';
   import {
     exportPortableProject,
@@ -42,7 +52,6 @@
   } from '../lib/portable-project';
   import {
     MicrophoneRecorder,
-    microphoneErrorMessage,
     type RecordingResult,
   } from '../lib/microphone-recorder';
   import {
@@ -57,6 +66,7 @@
     updatePad,
   } from '../lib/project';
   import { normalizeTrim } from '../lib/sample-editing';
+  import { starterKit } from '../lib/starter-kit';
   import {
     loadWorkspace,
     loadWaveform,
@@ -69,7 +79,8 @@
   } from '../lib/storage';
 
   type ActivePointer = { padId: string; sourceId: string };
-  type OpenPanel = 'device' | 'edit' | 'loop' | 'record' | 'sounds' | null;
+  type OpenPanel =
+    'device' | 'edit' | 'language' | 'loop' | 'record' | 'sounds' | null;
   type RecordingState =
     'idle' | 'requesting' | 'recording' | 'preview' | 'saving';
 
@@ -117,11 +128,27 @@
   let loopSaveQueue: Promise<void> = Promise.resolve();
   let currentLoopStep = 0;
   let loopStartedAt = 0;
-  let lastInput = 'Waiting for input';
+  let languagePreference: LanguagePreference = 'system';
+  let locale: Locale = 'en';
+  let t = (
+    key: TranslationKey,
+    values?: Record<string, string | number>,
+  ): string => translate(locale, key, values);
+  let lastInput: string | null = null;
   let errorMessage = '';
 
   onMount(() => {
     clientReady = true;
+    let storedPreference: string | null = null;
+    try {
+      storedPreference = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    } catch {
+      // The system language remains available when browser storage is blocked.
+    }
+    if (isLanguagePreference(storedPreference)) {
+      languagePreference = storedPreference;
+    }
+    applyLanguage(languagePreference);
     void restoreWorkspace();
   });
   onDestroy(() => {
@@ -138,10 +165,7 @@
       samples.clear();
       for (const sample of workspace.samples) samples.set(sample.id, sample);
     } catch (error) {
-      showError(
-        error,
-        'Local storage is unavailable. Changes will not be saved.',
-      );
+      showError(error, t('error.storageUnavailable'));
     } finally {
       storageReady = true;
     }
@@ -167,7 +191,7 @@
       audioState = 'ready';
     } catch (error) {
       audioState = 'error';
-      showError(error, `Could not play ${pad.label}.`);
+      showError(error, t('error.playPad', { name: displayPadLabel(pad) }));
     }
   }
 
@@ -186,7 +210,7 @@
     const sourceId = `pointer:${event.pointerId}`;
     pointerPads.set(event.pointerId, { padId: targetPad.id, sourceId });
     setPadActive(targetPad.id, sourceId, true);
-    if (isMappedMouse) lastInput = 'Primary click';
+    if (isMappedMouse) lastInput = t('device.primaryClick');
     void playPad(targetPad);
   }
 
@@ -252,7 +276,7 @@
     input.value = '';
     if (!file) return;
     if (file.size > MAX_SAMPLE_BYTES) {
-      errorMessage = 'Audio files must be 25 MB or smaller.';
+      errorMessage = t('error.audioFileSize');
       return;
     }
 
@@ -282,7 +306,7 @@
       project = updatedProject;
     } catch (error) {
       audio.removeSample(sampleId);
-      showError(error, 'This audio file could not be decoded or saved.');
+      showError(error, t('error.audioFile'));
     } finally {
       uploadBusy = false;
     }
@@ -299,7 +323,7 @@
       project = resetProject;
       selectedPadId = project.pads[0]?.id ?? '';
     } catch (error) {
-      showError(error, 'The starter kit could not be restored.');
+      showError(error, t('error.reset'));
     }
   }
 
@@ -320,7 +344,7 @@
       anchor.remove();
       setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch (error) {
-      showError(error, 'The project could not be exported.');
+      showError(error, t('error.export'));
     } finally {
       portabilityBusy = false;
     }
@@ -347,8 +371,12 @@
     } catch (error) {
       errorMessage =
         error instanceof PortableProjectError
-          ? error.message
-          : 'The project could not be imported.';
+          ? t(
+              error.code === 'too-large'
+                ? 'error.importTooLarge'
+                : 'error.importInvalid',
+            )
+          : t('error.import');
     } finally {
       portabilityBusy = false;
     }
@@ -360,7 +388,7 @@
       audioState = 'ready';
     } catch (error) {
       audioState = 'error';
-      showError(error, 'Audio is unavailable in this browser.');
+      showError(error, t('error.audioUnavailable'));
     }
   }
 
@@ -407,7 +435,7 @@
       editTrimEnd = trim.end;
       editWaveform = waveform;
     } catch (error) {
-      showError(error, 'This sample could not be opened for editing.');
+      showError(error, t('error.editOpen'));
       openPanel = 'sounds';
     } finally {
       editBusy = false;
@@ -437,14 +465,14 @@
         trimEnd: editTrimEnd,
       });
     } catch (error) {
-      showError(error, 'This edit could not be previewed.');
+      showError(error, t('error.editPreview'));
     }
   }
 
   async function saveEdit(): Promise<void> {
     const label = editLabel.trim();
     if (!label) {
-      errorMessage = 'Pad names cannot be empty.';
+      errorMessage = t('error.emptyName');
       return;
     }
     const trim = normalizeTrim(editDuration, editTrimStart, editTrimEnd);
@@ -473,7 +501,7 @@
       project = updatedProject;
       closePanel();
     } catch (error) {
-      showError(error, 'This edit could not be saved.');
+      showError(error, t('error.editSave'));
     } finally {
       editSaving = false;
     }
@@ -502,7 +530,7 @@
       project = updatedProject;
       closePanel();
     } catch (error) {
-      showError(error, 'This pad could not be cleared.');
+      showError(error, t('error.clearPad'));
     } finally {
       editSaving = false;
     }
@@ -540,7 +568,7 @@
       loopPlaying = true;
     } catch (error) {
       audioState = 'error';
-      showError(error, 'The loop could not be started.');
+      showError(error, t('error.loopStart'));
     } finally {
       loopStarting = false;
     }
@@ -633,7 +661,7 @@
     try {
       await save;
     } catch (error) {
-      showError(error, 'The loop could not be saved.');
+      showError(error, t('error.loopSave'));
     } finally {
       if (version === loopSaveVersion) loopSaving = false;
     }
@@ -668,7 +696,7 @@
     } catch (error) {
       recordingSession = null;
       recordingState = 'idle';
-      recordingError = microphoneErrorMessage(error);
+      recordingError = localizedMicrophoneError(error);
     }
   }
 
@@ -683,7 +711,7 @@
       recordingState = 'preview';
     } catch (error) {
       recordingState = 'idle';
-      recordingError = microphoneErrorMessage(error);
+      recordingError = localizedMicrophoneError(error);
     } finally {
       recordingSession = null;
     }
@@ -698,7 +726,7 @@
       await audio.trigger(pendingRecording.id);
       audioState = 'ready';
     } catch (error) {
-      showError(error, 'This recording could not be previewed.');
+      showError(error, t('error.recordPreview'));
     }
   }
 
@@ -729,7 +757,7 @@
       closePanel();
     } catch (error) {
       recordingState = 'preview';
-      showError(error, 'This recording could not be saved.');
+      showError(error, t('error.recordSave'));
     }
   }
 
@@ -765,9 +793,9 @@
 
   function nextRecordingName(): string {
     const count = [...samples.values()].filter((sample) =>
-      sample.name.startsWith('Recording '),
+      /^(Recording|Opptak) /.test(sample.name),
     ).length;
-    return `Recording ${String(count + 1).padStart(2, '0')}`;
+    return t('record.name', { number: String(count + 1).padStart(2, '0') });
   }
 
   function formattedRecordingTime(seconds: number): string {
@@ -797,7 +825,7 @@
   }
 
   function padBindingLabel(pad: Pad): string {
-    if (pad.binding.type === 'mouse-primary') return 'Click';
+    if (pad.binding.type === 'mouse-primary') return t('pad.click');
     return (
       keyboardBindings.find((binding) => binding.code === pad.binding.code)
         ?.display ?? ''
@@ -827,7 +855,7 @@
       filename
         .replace(/\.[^/.]+$/, '')
         .trim()
-        .slice(0, 48) || 'Custom sound'
+        .slice(0, 48) || t('sample.custom')
     );
   }
 
@@ -843,8 +871,54 @@
   function showError(error: unknown, fallback: string): void {
     errorMessage =
       error instanceof Error && error.name === 'QuotaExceededError'
-        ? 'Device storage is full.'
+        ? t('error.storageFull')
         : fallback;
+  }
+
+  function applyLanguage(preference: LanguagePreference): void {
+    languagePreference = preference;
+    locale = resolveLocale(preference, navigator.languages);
+    t = (key, values) => translate(locale, key, values);
+    document.documentElement.lang = locale;
+    try {
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, preference);
+    } catch {
+      // Language switching still works for the current visit without storage.
+    }
+  }
+
+  function displayPadLabel(pad: Pad): string {
+    if (pad.sampleId === null && pad.label === 'Empty pad') {
+      return t('sample.empty');
+    }
+    const starterSound = starterKit.find((sound) => sound.id === pad.sampleId);
+    if (starterSound && starterSound.label === pad.label) {
+      return t(`sample.${starterSound.id}` as TranslationKey);
+    }
+    return pad.label;
+  }
+
+  function displayProjectName(): string {
+    return project.name === 'My sampler' ? t('project.default') : project.name;
+  }
+
+  function displaySelectedPadLabel(): string {
+    const pad = project.pads.find(
+      (candidate) => candidate.id === selectedPadId,
+    );
+    return pad ? displayPadLabel(pad) : '';
+  }
+
+  function localizedMicrophoneError(error: unknown): string {
+    if (!(error instanceof DOMException))
+      return t('error.microphoneUnavailable');
+    const keyByName: Partial<Record<string, TranslationKey>> = {
+      NotAllowedError: 'error.microphoneDenied',
+      NotFoundError: 'error.microphoneMissing',
+      NotReadableError: 'error.microphoneBusy',
+      SecurityError: 'error.microphoneHttps',
+    };
+    return t(keyByName[error.name] ?? 'error.microphoneUnavailable');
   }
 
   function isEditableTarget(target: EventTarget | null): boolean {
@@ -870,7 +944,7 @@
   <header class="topbar">
     <div>
       <p class="eyebrow">Makey Makey</p>
-      <h1>Sampler</h1>
+      <h1>{t('sampler')}</h1>
     </div>
 
     <button
@@ -881,21 +955,26 @@
     >
       {#if audioState === 'error'}
         <VolumeX size={18} strokeWidth={2.25} />
-        <span>Audio unavailable</span>
+        <span>{t('audio.unavailable')}</span>
       {:else}
         <Volume2 size={18} strokeWidth={2.25} />
-        <span>{audioState === 'ready' ? 'Audio ready' : 'Start audio'}</span>
+        <span
+          >{audioState === 'ready' ? t('audio.ready') : t('audio.start')}</span
+        >
       {/if}
     </button>
   </header>
 
-  <section class="pad-grid" aria-label="Sampler pads">
+  <section class="pad-grid" aria-label={t('pads.label')}>
     {#each project.pads as pad, index (pad.id)}
       <button
         class:active={activePads.has(pad.id) || loopingPads.has(pad.id)}
         class="pad"
         type="button"
-        aria-label={`Pad ${index + 1}: ${pad.label}`}
+        aria-label={t('pad.label', {
+          number: index + 1,
+          name: displayPadLabel(pad),
+        })}
         aria-pressed={activePads.has(pad.id) || loopingPads.has(pad.id)}
         style={`--pad-color: ${pad.color}; --pad-text: ${padTextColor(pad.color)}`}
         onpointerdown={(event) => handlePointerDown(event, pad)}
@@ -907,54 +986,64 @@
           <span class="pad-number">{String(index + 1).padStart(2, '0')}</span>
           <span class="pad-binding">{padBindingLabel(pad)}</span>
         </span>
-        <span class="pad-label">{pad.label}</span>
+        <span class="pad-label">{displayPadLabel(pad)}</span>
       </button>
     {/each}
   </section>
 
   <footer>
-    <span class="project-name">{project.name}</span>
+    <span class="project-name">{displayProjectName()}</span>
     <span class="footer-actions">
       <button
         class:active={loopPlaying}
         class="tool-button"
         type="button"
-        aria-label="Open loop controls"
-        title="Looper"
+        aria-label={t('nav.loop.open')}
+        title={t('loop.title')}
         onclick={() => (openPanel = 'loop')}
       >
         <Repeat2 size={18} strokeWidth={2.25} />
-        <span>Loop</span>
+        <span>{t('nav.loop')}</span>
       </button>
       <button
         class="tool-button"
         type="button"
-        aria-label="Record"
-        title="Record"
+        aria-label={t('nav.record')}
+        title={t('nav.record')}
         onclick={() => (openPanel = 'record')}
       >
         <Mic size={18} strokeWidth={2.25} />
-        <span>Record</span>
+        <span>{t('nav.record')}</span>
       </button>
       <button
         class="tool-button"
         type="button"
-        aria-label="Sounds"
-        title="Sounds"
+        aria-label={t('nav.sounds')}
+        title={t('nav.sounds')}
         onclick={() => (openPanel = 'sounds')}
       >
         <Library size={18} strokeWidth={2.25} />
-        <span>Sounds</span>
+        <span>{t('nav.sounds')}</span>
       </button>
       <button
         class="tool-button"
         type="button"
-        aria-label="Test Makey Makey"
-        title="Makey Makey test"
+        aria-label={t('nav.makey.open')}
+        title={t('device.title')}
         onclick={() => (openPanel = 'device')}
       >
         <PlugZap size={18} strokeWidth={2.25} />
-        <span>Makey</span>
+        <span>{t('nav.makey')}</span>
+      </button>
+      <button
+        class="tool-button"
+        type="button"
+        aria-label={t('nav.language.open')}
+        title={t('nav.language')}
+        onclick={() => (openPanel = 'language')}
+      >
+        <Languages size={18} strokeWidth={2.25} />
+        <span>{t('nav.language')}</span>
       </button>
     </span>
   </footer>
@@ -966,7 +1055,7 @@
     <button
       class="icon-button"
       type="button"
-      aria-label="Dismiss error"
+      aria-label={t('common.dismissError')}
       onclick={() => (errorMessage = '')}
     >
       <X size={20} />
@@ -979,7 +1068,7 @@
     <button
       class="dialog-backdrop"
       type="button"
-      aria-label="Close panel"
+      aria-label={t('common.closePanel')}
       onclick={closePanel}
     ></button>
 
@@ -992,25 +1081,25 @@
       >
         <header class="panel-header">
           <div>
-            <p class="eyebrow">Local library</p>
-            <h2 id="sounds-title">Sounds</h2>
+            <p class="eyebrow">{t('sounds.eyebrow')}</p>
+            <h2 id="sounds-title">{t('nav.sounds')}</h2>
           </div>
           <button
             class="icon-button"
             type="button"
-            aria-label="Close"
+            aria-label={t('common.close')}
             onclick={closePanel}
           >
             <X size={22} />
           </button>
         </header>
 
-        <div class="sound-pad-picker" aria-label="Choose a pad">
+        <div class="sound-pad-picker" aria-label={t('sounds.choosePad')}>
           {#each project.pads as pad, index (pad.id)}
             <button
               class:selected={selectedPadId === pad.id}
               type="button"
-              aria-label={`Select pad ${index + 1}`}
+              aria-label={t('pad.select', { number: index + 1 })}
               aria-pressed={selectedPadId === pad.id}
               style={`--picker-color: ${pad.color}; --picker-text: ${padTextColor(pad.color)}`}
               onclick={() => (selectedPadId = pad.id)}
@@ -1024,16 +1113,13 @@
           <div class="selected-sound">
             <FileAudio size={22} />
             <span>
-              <small>Selected pad</small>
-              <strong
-                >{project.pads.find((pad) => pad.id === selectedPadId)
-                  ?.label}</strong
-              >
+              <small>{t('sounds.selectedPad')}</small>
+              <strong>{displaySelectedPadLabel()}</strong>
             </span>
             <button
               class="icon-button"
               type="button"
-              aria-label="Edit selected sound"
+              aria-label={t('sounds.edit')}
               disabled={!project.pads.find((pad) => pad.id === selectedPadId)
                 ?.sampleId}
               onclick={openEditor}
@@ -1043,18 +1129,18 @@
           </div>
         {/if}
 
-        <div class="portability-actions" aria-label="Project files">
+        <div class="portability-actions" aria-label={t('sounds.projectFiles')}>
           <button
             type="button"
             disabled={portabilityBusy}
             onclick={downloadProject}
           >
             <Download size={19} />
-            <span>Export project</span>
+            <span>{t('sounds.export')}</span>
           </button>
           <label class:busy={portabilityBusy} for="project-import">
             <FolderOpen size={19} />
-            <span>Import project</span>
+            <span>{t('sounds.import')}</span>
           </label>
           <input
             id="project-import"
@@ -1074,10 +1160,10 @@
           >
             {#if uploadBusy}
               <LoaderCircle class="spin" size={20} />
-              <span>Loading</span>
+              <span>{t('common.loading')}</span>
             {:else}
               <Upload size={20} />
-              <span>Upload audio</span>
+              <span>{t('sounds.upload')}</span>
             {/if}
           </label>
           <input
@@ -1094,7 +1180,7 @@
             onclick={resetStarterKit}
           >
             <RotateCcw size={19} />
-            <span>Reset kit</span>
+            <span>{t('sounds.reset')}</span>
           </button>
         </div>
       </section>
@@ -1108,13 +1194,13 @@
       >
         <header class="panel-header">
           <div>
-            <p class="eyebrow">Quantized performance</p>
-            <h2 id="loop-title">Looper</h2>
+            <p class="eyebrow">{t('loop.eyebrow')}</p>
+            <h2 id="loop-title">{t('loop.title')}</h2>
           </div>
           <button
             class="icon-button"
             type="button"
-            aria-label="Close"
+            aria-label={t('common.close')}
             onclick={closePanel}
           >
             <X size={22} />
@@ -1126,30 +1212,35 @@
           <span>
             <small
               >{loopRecording
-                ? 'Overdubbing'
+                ? t('loop.overdubbing')
                 : loopPlaying
-                  ? 'Playing'
-                  : 'Stopped'}</small
+                  ? t('loop.playing')
+                  : t('loop.stopped')}</small
             >
             <strong>{loopPosition()}</strong>
           </span>
           <span class="event-count"
             >{project.loop.events.length}
-            {project.loop.events.length === 1 ? 'hit' : 'hits'}</span
+            {project.loop.events.length === 1
+              ? t('loop.hit')
+              : t('loop.hits')}</span
           >
         </div>
 
-        <div class="loop-pad-grid" aria-label="Loop recording pads">
+        <div class="loop-pad-grid" aria-label={t('loop.pads')}>
           {#each project.pads as pad, index (pad.id)}
             <button
               type="button"
-              aria-label={`Loop pad ${index + 1}: ${pad.label}`}
+              aria-label={t('loop.pad', {
+                number: index + 1,
+                name: displayPadLabel(pad),
+              })}
               disabled={!pad.sampleId}
               style={`--loop-pad-color: ${pad.color}; --loop-pad-text: ${padTextColor(pad.color)}`}
               onclick={() => void playPad(pad)}
             >
               <span>{String(index + 1).padStart(2, '0')}</span>
-              <strong>{pad.label}</strong>
+              <strong>{displayPadLabel(pad)}</strong>
             </button>
           {/each}
         </div>
@@ -1170,13 +1261,15 @@
           </label>
 
           <fieldset class="bars-field">
-            <legend>Bars</legend>
+            <legend>{t('loop.bars')}</legend>
             <div class="segmented-control">
               {#each [1, 2, 4] as bars (bars)}
                 <button
                   class:active={project.loop.bars === bars}
                   type="button"
-                  aria-label={`${bars} ${bars === 1 ? 'bar' : 'bars'}`}
+                  aria-label={t(bars === 1 ? 'loop.bar' : 'loop.barPlural', {
+                    count: bars,
+                  })}
                   aria-pressed={project.loop.bars === bars}
                   disabled={loopPlaying}
                   onclick={() => changeLoopBars(bars as 1 | 2 | 4)}
@@ -1187,7 +1280,7 @@
           </fieldset>
         </div>
 
-        <div class="step-strip" role="img" aria-label="Current bar steps">
+        <div class="step-strip" role="img" aria-label={t('loop.steps')}>
           {#each Array.from({ length: 16 }, (_, index) => index) as step (step)}
             <span
               class:current={loopPlaying && currentLoopStep % 16 === step}
@@ -1202,7 +1295,7 @@
           {#if loopPlaying}
             <button class="transport-stop" type="button" onclick={stopLooper}>
               <Square size={18} fill="currentColor" />
-              <span>Stop</span>
+              <span>{t('common.stop')}</span>
             </button>
           {:else}
             <button
@@ -1216,7 +1309,9 @@
               {:else}
                 <Play size={19} fill="currentColor" />
               {/if}
-              <span>{loopStarting ? 'Starting' : 'Start'}</span>
+              <span
+                >{loopStarting ? t('common.starting') : t('common.start')}</span
+              >
             </button>
           {/if}
           <button
@@ -1228,7 +1323,7 @@
             onclick={() => (loopRecording = !loopRecording)}
           >
             <Circle size={18} fill="currentColor" />
-            <span>Record</span>
+            <span>{t('loop.record')}</span>
           </button>
           <button
             class:active={loopMuted}
@@ -1240,7 +1335,7 @@
             {#if loopMuted}<VolumeX size={19} />{:else}<Volume2
                 size={19}
               />{/if}
-            <span>Mute</span>
+            <span>{t('loop.mute')}</span>
           </button>
           <button
             class="transport-clear"
@@ -1249,7 +1344,7 @@
             onclick={clearLoop}
           >
             <Trash2 size={19} />
-            <span>Clear</span>
+            <span>{t('common.clear')}</span>
           </button>
         </div>
       </section>
@@ -1262,13 +1357,13 @@
       >
         <header class="panel-header">
           <div>
-            <p class="eyebrow">Nondestructive</p>
-            <h2 id="edit-title">Edit sample</h2>
+            <p class="eyebrow">{t('edit.eyebrow')}</p>
+            <h2 id="edit-title">{t('edit.title')}</h2>
           </div>
           <button
             class="icon-button"
             type="button"
-            aria-label="Close"
+            aria-label={t('common.close')}
             onclick={closePanel}
           >
             <X size={22} />
@@ -1278,17 +1373,17 @@
         {#if editBusy}
           <div class="editor-loading" role="status">
             <LoaderCircle class="spin" size={22} />
-            <span>Reading waveform</span>
+            <span>{t('edit.reading')}</span>
           </div>
         {:else}
-          <div class="waveform" aria-label="Sample waveform">
+          <div class="waveform" aria-label={t('edit.waveform')}>
             {#each editWaveform as point, index (index)}
               <span style={`height: ${waveformBarHeight(point)}`}></span>
             {/each}
           </div>
 
           <label class="editor-field" for="sample-name">
-            <span>Name</span>
+            <span>{t('edit.name')}</span>
             <input
               id="sample-name"
               type="text"
@@ -1300,7 +1395,7 @@
           <div class="trim-controls">
             <label class="range-field" for="trim-start">
               <span
-                ><strong>Trim start</strong><output
+                ><strong>{t('edit.trimStart')}</strong><output
                   >{formatSeconds(editTrimStart)}</output
                 ></span
               >
@@ -1316,7 +1411,7 @@
             </label>
             <label class="range-field" for="trim-end">
               <span
-                ><strong>Trim end</strong><output
+                ><strong>{t('edit.trimEnd')}</strong><output
                   >{formatSeconds(editTrimEnd)}</output
                 ></span
               >
@@ -1332,7 +1427,7 @@
             </label>
             <label class="range-field" for="sample-gain">
               <span
-                ><strong>Gain</strong><output
+                ><strong>{t('edit.gain')}</strong><output
                   >{Math.round(editGain * 100)}%</output
                 ></span
               >
@@ -1348,19 +1443,21 @@
           </div>
 
           <fieldset class="mode-field">
-            <legend>Playback</legend>
+            <legend>{t('edit.playback')}</legend>
             <div class="segmented-control">
               <button
                 class:active={editPlaybackMode === 'one-shot'}
                 type="button"
                 aria-pressed={editPlaybackMode === 'one-shot'}
-                onclick={() => (editPlaybackMode = 'one-shot')}>One-shot</button
+                onclick={() => (editPlaybackMode = 'one-shot')}
+                >{t('edit.oneShot')}</button
               >
               <button
                 class:active={editPlaybackMode === 'loop'}
                 type="button"
                 aria-pressed={editPlaybackMode === 'loop'}
-                onclick={() => (editPlaybackMode = 'loop')}>Loop</button
+                onclick={() => (editPlaybackMode = 'loop')}
+                >{t('edit.loop')}</button
               >
             </div>
           </fieldset>
@@ -1372,7 +1469,7 @@
               onclick={previewEdit}
             >
               <Play size={19} />
-              <span>Preview edit</span>
+              <span>{t('edit.preview')}</span>
             </button>
           </div>
 
@@ -1384,7 +1481,7 @@
               onclick={clearSelectedPad}
             >
               <Trash2 size={19} />
-              <span>Clear pad</span>
+              <span>{t('edit.clearPad')}</span>
             </button>
             <button
               class="primary-action"
@@ -1397,7 +1494,7 @@
               {:else}
                 <Save size={19} />
               {/if}
-              <span>{editSaving ? 'Saving' : 'Save changes'}</span>
+              <span>{editSaving ? t('common.saving') : t('edit.save')}</span>
             </button>
           </div>
         {/if}
@@ -1411,25 +1508,25 @@
       >
         <header class="panel-header">
           <div>
-            <p class="eyebrow">Microphone</p>
-            <h2 id="record-title">Record a sound</h2>
+            <p class="eyebrow">{t('record.eyebrow')}</p>
+            <h2 id="record-title">{t('record.title')}</h2>
           </div>
           <button
             class="icon-button"
             type="button"
-            aria-label="Close"
+            aria-label={t('common.close')}
             onclick={closePanel}
           >
             <X size={22} />
           </button>
         </header>
 
-        <div class="sound-pad-picker" aria-label="Choose a pad">
+        <div class="sound-pad-picker" aria-label={t('sounds.choosePad')}>
           {#each project.pads as pad, index (pad.id)}
             <button
               class:selected={selectedPadId === pad.id}
               type="button"
-              aria-label={`Select pad ${index + 1}`}
+              aria-label={t('pad.select', { number: index + 1 })}
               aria-pressed={selectedPadId === pad.id}
               disabled={recordingState !== 'idle'}
               style={`--picker-color: ${pad.color}; --picker-text: ${padTextColor(pad.color)}`}
@@ -1449,15 +1546,15 @@
           <span>
             <small>
               {recordingState === 'preview'
-                ? 'Ready to save'
+                ? t('record.ready')
                 : recordingState === 'recording'
-                  ? 'Recording'
-                  : 'Selected pad'}
+                  ? t('record.recording')
+                  : t('record.selectedPad')}
             </small>
             <strong>
               {recordingState === 'recording' || recordingState === 'preview'
                 ? formattedRecordingTime(recordingElapsed)
-                : project.pads.find((pad) => pad.id === selectedPadId)?.label}
+                : displaySelectedPadLabel()}
             </strong>
           </span>
         </div>
@@ -1475,7 +1572,7 @@
               onclick={previewRecording}
             >
               <Play size={19} />
-              <span>Preview</span>
+              <span>{t('record.preview')}</span>
             </button>
             <button
               class="primary-action"
@@ -1488,7 +1585,11 @@
               {:else}
                 <Check size={19} />
               {/if}
-              <span>{recordingState === 'saving' ? 'Saving' : 'Accept'}</span>
+              <span
+                >{recordingState === 'saving'
+                  ? t('common.saving')
+                  : t('record.accept')}</span
+              >
             </button>
             <button
               class="secondary-action retry-action"
@@ -1497,13 +1598,13 @@
               onclick={retryRecording}
             >
               <RefreshCw size={19} />
-              <span>Retry</span>
+              <span>{t('record.retry')}</span>
             </button>
           </div>
         {:else if recordingState === 'recording'}
           <button class="stop-recording" type="button" onclick={stopRecording}>
             <Square size={19} fill="currentColor" />
-            <span>Stop recording</span>
+            <span>{t('record.stop')}</span>
           </button>
         {:else}
           <button
@@ -1514,13 +1615,54 @@
           >
             {#if recordingState === 'requesting'}
               <LoaderCircle class="spin" size={20} />
-              <span>Waiting for permission</span>
+              <span>{t('record.waiting')}</span>
             {:else}
               <Mic size={20} />
-              <span>Start recording</span>
+              <span>{t('record.start')}</span>
             {/if}
           </button>
         {/if}
+      </section>
+    {:else if openPanel === 'language'}
+      <section
+        class="device-panel language-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="language-title"
+      >
+        <header class="panel-header">
+          <div>
+            <p class="eyebrow">{t('language.eyebrow')}</p>
+            <h2 id="language-title">{t('language.title')}</h2>
+          </div>
+          <button
+            class="icon-button"
+            type="button"
+            aria-label={t('common.close')}
+            onclick={closePanel}
+          >
+            <X size={22} />
+          </button>
+        </header>
+
+        <p class="language-description">{t('language.description')}</p>
+        <div
+          class="language-options"
+          role="group"
+          aria-label={t('language.title')}
+        >
+          {#each [['system', 'language.system'], ['en', 'language.english'], ['nb', 'language.norwegian']] as [preference, key] (preference)}
+            <button
+              class:active={languagePreference === preference}
+              type="button"
+              aria-pressed={languagePreference === preference}
+              onclick={() => applyLanguage(preference as LanguagePreference)}
+            >
+              <span>{t(key as TranslationKey)}</span>
+              {#if languagePreference === preference}<Check size={19} />{/if}
+            </button>
+          {/each}
+        </div>
       </section>
     {:else}
       <section
@@ -1531,13 +1673,13 @@
       >
         <header class="panel-header">
           <div>
-            <p class="eyebrow">Input monitor</p>
-            <h2 id="device-title">Makey Makey test</h2>
+            <p class="eyebrow">{t('device.eyebrow')}</p>
+            <h2 id="device-title">{t('device.title')}</h2>
           </div>
           <button
             class="icon-button"
             type="button"
-            aria-label="Close"
+            aria-label={t('common.close')}
             onclick={closePanel}
           >
             <X size={22} />
@@ -1546,10 +1688,10 @@
 
         <div class="input-status" aria-live="polite">
           <Activity size={20} />
-          <span>{lastInput}</span>
+          <span>{lastInput ?? t('device.waiting')}</span>
         </div>
 
-        <div class="key-grid" aria-label="Keyboard inputs">
+        <div class="key-grid" aria-label={t('device.keyboardInputs')}>
           {#each keyboardBindings as binding (binding.code)}
             <kbd class:active={activeInputs.has(binding.code)}
               >{binding.display}</kbd
@@ -1561,7 +1703,8 @@
           <span class="toggle-label">
             <MousePointer2 size={20} />
             <span
-              ><strong>Primary click</strong><small>Triggers pad 12</small
+              ><strong>{t('device.primaryClick')}</strong><small
+                >{t('device.triggersPad')}</small
               ></span
             >
           </span>

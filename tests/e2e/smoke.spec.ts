@@ -55,3 +55,25 @@ test('supports simultaneous pointer presses without changing the pad layout', as
   expect(pressed).toEqual(['true', 'true']);
   await expect(pads).toHaveCount(12);
 });
+
+test('uses the system language and persists an explicit choice', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'languages', {
+      configurable: true,
+      get: () => ['nb-NO', 'en-US'],
+    });
+  });
+  await page.goto('/');
+
+  await expect(page.locator('html')).toHaveAttribute('lang', 'nb');
+  await expect(page.getByRole('button', { name: 'Start lyd' })).toBeVisible();
+  await page.getByRole('button', { name: 'Velg språk' }).click();
+  await page.getByRole('button', { name: 'Engelsk' }).click();
+
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  await expect(page.getByRole('button', { name: 'Start audio' })).toBeVisible();
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+});

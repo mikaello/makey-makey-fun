@@ -13,6 +13,7 @@ test('has no detectable accessibility violations in primary views', async ({
     'Record',
     'Sounds',
     'Test Makey Makey',
+    'Choose language',
   ]) {
     await page.getByRole('button', { name: buttonName, exact: true }).click();
     await expect(page.getByRole('dialog')).toBeVisible();
