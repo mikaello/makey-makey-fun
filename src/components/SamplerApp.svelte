@@ -2,6 +2,7 @@
   import {
     Activity,
     Check,
+    Circle,
     Download,
     Edit3,
     FileAudio,
@@ -13,6 +14,7 @@
     Play,
     PlugZap,
     RefreshCw,
+    Repeat2,
     RotateCcw,
     Save,
     Square,
@@ -32,6 +34,7 @@
     normalizeMakeyKey,
     type MakeyKeyboardCode,
   } from '../lib/input';
+  import { LookAheadScheduler, quantizeElapsedToStep } from '../lib/looper';
   import {
     exportPortableProject,
     importPortableProject,
@@ -50,6 +53,7 @@
     type Pad,
     type ProjectV1,
     type SampleRecord,
+    updateLoopPattern,
     updatePad,
   } from '../lib/project';
   import { normalizeTrim } from '../lib/sample-editing';
@@ -59,12 +63,13 @@
     replaceWorkspace,
     resetWorkspace,
     saveEditedProject,
+    saveProject,
     saveSampleAssignment,
     saveWaveform,
   } from '../lib/storage';
 
   type ActivePointer = { padId: string; sourceId: string };
-  type OpenPanel = 'device' | 'edit' | 'record' | 'sounds' | null;
+  type OpenPanel = 'device' | 'edit' | 'loop' | 'record' | 'sounds' | null;
   type RecordingState =
     'idle' | 'requesting' | 'recording' | 'preview' | 'saving';
 
@@ -76,6 +81,7 @@
   const activeInputs = new SvelteSet<MakeyKeyboardCode>();
   const loopingPads = new SvelteSet<string>();
   const samples = new SvelteMap<string, SampleRecord>();
+  const loopStepTimers = new SvelteSet<ReturnType<typeof setTimeout>>();
 
   let project: ProjectV1 = createDefaultProject();
   let selectedPadId = project.pads[0]?.id ?? '';
@@ -101,6 +107,16 @@
   let editTrimEnd = 0;
   let editDuration = 0;
   let editWaveform: number[] = [];
+  let loopScheduler: LookAheadScheduler | null = null;
+  let loopPlaying = false;
+  let loopStarting = false;
+  let loopRecording = false;
+  let loopMuted = false;
+  let loopSaving = false;
+  let loopSaveVersion = 0;
+  let loopSaveQueue: Promise<void> = Promise.resolve();
+  let currentLoopStep = 0;
+  let loopStartedAt = 0;
   let lastInput = 'Waiting for input';
   let errorMessage = '';
 
@@ -110,6 +126,7 @@
   });
   onDestroy(() => {
     cancelRecording();
+    stopLooper();
     audio.close();
   });
 
@@ -146,6 +163,7 @@
       });
       if (audio.isLooping(pad.id)) loopingPads.add(pad.id);
       else loopingPads.delete(pad.id);
+      captureLoopEvent(pad.id);
       audioState = 'ready';
     } catch (error) {
       audioState = 'error';
@@ -274,6 +292,7 @@
     const resetProject = resetProjectToStarterKit(project);
     try {
       await resetWorkspace(resetProject);
+      stopLooper();
       stopAllPadLoops();
       for (const sampleId of samples.keys()) audio.removeSample(sampleId);
       samples.clear();
@@ -317,6 +336,7 @@
     try {
       const imported = await importPortableProject(file);
       await replaceWorkspace(imported.project, imported.samples);
+      stopLooper();
       stopAllPadLoops();
       for (const sampleId of samples.keys()) audio.removeSample(sampleId);
       samples.clear();
@@ -494,6 +514,136 @@
 
   function formatSeconds(value: number): string {
     return `${value.toFixed(2)}s`;
+  }
+
+  async function startLooper(): Promise<void> {
+    if (loopPlaying || loopStarting) return;
+    loopStarting = true;
+    try {
+      for (const pad of project.pads) {
+        if (!pad.sampleId) continue;
+        const customSample = samples.get(pad.sampleId);
+        if (customSample && !audio.hasSample(customSample.id)) {
+          await audio.decodeSample(customSample.id, customSample.blob);
+        }
+      }
+      await audio.unlock();
+      audioState = 'ready';
+      loopStartedAt = audio.currentTime + 0.05;
+      loopScheduler = new LookAheadScheduler({
+        clock: () => audio.currentTime,
+        getPattern: () => project.loop,
+        onSchedule: scheduleLoopStep,
+        onStep: updateVisibleLoopStep,
+      });
+      loopScheduler.start(loopStartedAt);
+      loopPlaying = true;
+    } catch (error) {
+      audioState = 'error';
+      showError(error, 'The loop could not be started.');
+    } finally {
+      loopStarting = false;
+    }
+  }
+
+  function stopLooper(): void {
+    loopScheduler?.stop();
+    loopScheduler = null;
+    for (const timer of loopStepTimers) clearTimeout(timer);
+    loopStepTimers.clear();
+    loopPlaying = false;
+    loopRecording = false;
+    currentLoopStep = 0;
+  }
+
+  function scheduleLoopStep(step: number, time: number): void {
+    if (loopMuted) return;
+    for (const event of project.loop.events) {
+      if (event.step !== step) continue;
+      const pad = project.pads.find(
+        (candidate) => candidate.id === event.padId,
+      );
+      if (!pad?.sampleId) continue;
+      audio.schedule(pad.sampleId, time, {
+        gain: pad.gain,
+        trimStart: pad.trimStart,
+        trimEnd: pad.trimEnd,
+      });
+    }
+  }
+
+  function updateVisibleLoopStep(step: number, time: number): void {
+    const delay = Math.max(0, (time - audio.currentTime) * 1000);
+    const timer = setTimeout(() => {
+      currentLoopStep = step;
+      loopStepTimers.delete(timer);
+    }, delay);
+    loopStepTimers.add(timer);
+  }
+
+  function captureLoopEvent(padId: string): void {
+    if (!loopPlaying || !loopRecording) return;
+    const totalSteps = project.loop.bars * 16;
+    const step = quantizeElapsedToStep(
+      audio.currentTime - loopStartedAt,
+      project.loop.bpm,
+      totalSteps,
+    );
+    if (
+      project.loop.events.some(
+        (event) => event.padId === padId && event.step === step,
+      )
+    ) {
+      return;
+    }
+    persistLoop({
+      ...project.loop,
+      events: [...project.loop.events, { padId, step }],
+    });
+  }
+
+  async function changeLoopBpm(event: Event): Promise<void> {
+    const value = (event.currentTarget as HTMLInputElement).valueAsNumber;
+    await persistLoop({
+      ...project.loop,
+      bpm: Math.min(180, Math.max(60, value)),
+    });
+  }
+
+  async function changeLoopBars(bars: 1 | 2 | 4): Promise<void> {
+    const totalSteps = bars * 16;
+    await persistLoop({
+      ...project.loop,
+      bars,
+      events: project.loop.events.filter((event) => event.step < totalSteps),
+    });
+  }
+
+  async function clearLoop(): Promise<void> {
+    await persistLoop({ ...project.loop, events: [] });
+  }
+
+  async function persistLoop(loop: ProjectV1['loop']): Promise<void> {
+    const updatedProject = updateLoopPattern(project, loop);
+    project = updatedProject;
+    loopSaving = true;
+    const version = ++loopSaveVersion;
+    const save = loopSaveQueue.then(() => saveProject(updatedProject));
+    loopSaveQueue = save.catch(() => undefined);
+    try {
+      await save;
+    } catch (error) {
+      showError(error, 'The loop could not be saved.');
+    } finally {
+      if (version === loopSaveVersion) loopSaving = false;
+    }
+  }
+
+  function loopPosition(): string {
+    const bar = Math.floor(currentLoopStep / 16) + 1;
+    const beat = Math.floor((currentLoopStep % 16) / 4) + 1;
+    const sixteenth = (currentLoopStep % 4) + 1;
+    return `${bar}.${beat}.${sixteenth}`;
   }
 
   function stopAllPadLoops(): void {
@@ -763,8 +913,21 @@
     <span class="project-name">{project.name}</span>
     <span class="footer-actions">
       <button
+        class:active={loopPlaying}
         class="tool-button"
         type="button"
+        aria-label="Open loop controls"
+        title="Looper"
+        onclick={() => (openPanel = 'loop')}
+      >
+        <Repeat2 size={18} strokeWidth={2.25} />
+        <span>Loop</span>
+      </button>
+      <button
+        class="tool-button"
+        type="button"
+        aria-label="Record"
+        title="Record"
         onclick={() => (openPanel = 'record')}
       >
         <Mic size={18} strokeWidth={2.25} />
@@ -773,6 +936,8 @@
       <button
         class="tool-button"
         type="button"
+        aria-label="Sounds"
+        title="Sounds"
         onclick={() => (openPanel = 'sounds')}
       >
         <Library size={18} strokeWidth={2.25} />
@@ -782,6 +947,7 @@
         class="tool-button"
         type="button"
         aria-label="Test Makey Makey"
+        title="Makey Makey test"
         onclick={() => (openPanel = 'device')}
       >
         <PlugZap size={18} strokeWidth={2.25} />
@@ -926,6 +1092,161 @@
           >
             <RotateCcw size={19} />
             <span>Reset kit</span>
+          </button>
+        </div>
+      </section>
+    {:else if openPanel === 'loop'}
+      <section
+        class="device-panel loop-panel"
+        data-loop-saving={loopSaving ? 'true' : 'false'}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="loop-title"
+      >
+        <header class="panel-header">
+          <div>
+            <p class="eyebrow">Quantized performance</p>
+            <h2 id="loop-title">Looper</h2>
+          </div>
+          <button
+            class="icon-button"
+            type="button"
+            aria-label="Close"
+            onclick={closePanel}
+          >
+            <X size={22} />
+          </button>
+        </header>
+
+        <div class:playing={loopPlaying} class="loop-status" aria-live="polite">
+          <Repeat2 size={21} />
+          <span>
+            <small
+              >{loopRecording
+                ? 'Overdubbing'
+                : loopPlaying
+                  ? 'Playing'
+                  : 'Stopped'}</small
+            >
+            <strong>{loopPosition()}</strong>
+          </span>
+          <span class="event-count"
+            >{project.loop.events.length}
+            {project.loop.events.length === 1 ? 'hit' : 'hits'}</span
+          >
+        </div>
+
+        <div class="loop-pad-grid" aria-label="Loop recording pads">
+          {#each project.pads as pad, index (pad.id)}
+            <button
+              type="button"
+              aria-label={`Loop pad ${index + 1}: ${pad.label}`}
+              disabled={!pad.sampleId}
+              style={`--loop-pad-color: ${pad.color}`}
+              onclick={() => void playPad(pad)}
+            >
+              <span>{String(index + 1).padStart(2, '0')}</span>
+              <strong>{pad.label}</strong>
+            </button>
+          {/each}
+        </div>
+
+        <div class="loop-settings">
+          <label class="tempo-field" for="loop-bpm">
+            <span>BPM</span>
+            <input
+              id="loop-bpm"
+              type="number"
+              min="60"
+              max="180"
+              step="1"
+              disabled={loopPlaying}
+              value={project.loop.bpm}
+              onchange={changeLoopBpm}
+            />
+          </label>
+
+          <fieldset class="bars-field">
+            <legend>Bars</legend>
+            <div class="segmented-control">
+              {#each [1, 2, 4] as bars (bars)}
+                <button
+                  class:active={project.loop.bars === bars}
+                  type="button"
+                  aria-label={`${bars} ${bars === 1 ? 'bar' : 'bars'}`}
+                  aria-pressed={project.loop.bars === bars}
+                  disabled={loopPlaying}
+                  onclick={() => changeLoopBars(bars as 1 | 2 | 4)}
+                  >{bars}</button
+                >
+              {/each}
+            </div>
+          </fieldset>
+        </div>
+
+        <div class="step-strip" aria-label="Current bar steps">
+          {#each Array.from({ length: 16 }, (_, index) => index) as step (step)}
+            <span
+              class:current={loopPlaying && currentLoopStep % 16 === step}
+              class:filled={project.loop.events.some(
+                (event) => event.step % 16 === step,
+              )}
+            ></span>
+          {/each}
+        </div>
+
+        <div class="loop-transport">
+          {#if loopPlaying}
+            <button class="transport-stop" type="button" onclick={stopLooper}>
+              <Square size={18} fill="currentColor" />
+              <span>Stop</span>
+            </button>
+          {:else}
+            <button
+              class="transport-start"
+              type="button"
+              disabled={loopStarting}
+              onclick={startLooper}
+            >
+              {#if loopStarting}
+                <LoaderCircle class="spin" size={19} />
+              {:else}
+                <Play size={19} fill="currentColor" />
+              {/if}
+              <span>{loopStarting ? 'Starting' : 'Start'}</span>
+            </button>
+          {/if}
+          <button
+            class:active={loopRecording}
+            class="transport-record"
+            type="button"
+            aria-pressed={loopRecording}
+            disabled={!loopPlaying}
+            onclick={() => (loopRecording = !loopRecording)}
+          >
+            <Circle size={18} fill="currentColor" />
+            <span>Record</span>
+          </button>
+          <button
+            class:active={loopMuted}
+            class="transport-mute"
+            type="button"
+            aria-pressed={loopMuted}
+            onclick={() => (loopMuted = !loopMuted)}
+          >
+            {#if loopMuted}<VolumeX size={19} />{:else}<Volume2
+                size={19}
+              />{/if}
+            <span>Mute</span>
+          </button>
+          <button
+            class="transport-clear"
+            type="button"
+            disabled={project.loop.events.length === 0}
+            onclick={clearLoop}
+          >
+            <Trash2 size={19} />
+            <span>Clear</span>
           </button>
         </div>
       </section>
