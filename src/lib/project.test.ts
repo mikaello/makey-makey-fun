@@ -1,0 +1,61 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  assignSampleToPad,
+  createDefaultProject,
+  resetProjectToStarterKit,
+} from './project';
+
+describe('project model', () => {
+  it('creates a single twelve-pad starter project', () => {
+    const project = createDefaultProject({
+      id: 'project-1',
+      now: '2026-01-01T00:00:00.000Z',
+    });
+
+    expect(project.schemaVersion).toBe(1);
+    expect(project.pads).toHaveLength(12);
+    expect(project.pads[0]?.binding).toEqual({
+      type: 'keyboard',
+      code: 'ArrowUp',
+    });
+    expect(project.pads[11]?.binding).toEqual({ type: 'mouse-primary' });
+    expect(project.loop).toEqual({ bpm: 110, bars: 1, events: [] });
+  });
+
+  it('assigns a sample without mutating unrelated pads', () => {
+    const original = createDefaultProject({
+      id: 'project-1',
+      now: '2026-01-01T00:00:00.000Z',
+    });
+    const updated = assignSampleToPad(
+      original,
+      'pad-1',
+      { id: 'sample-1', name: 'Door slam' },
+      '2026-01-02T00:00:00.000Z',
+    );
+
+    expect(updated.pads[0]).toMatchObject({
+      label: 'Door slam',
+      sampleId: 'sample-1',
+    });
+    expect(updated.pads[1]).toBe(original.pads[1]);
+    expect(original.pads[0]?.label).toBe('Kick');
+  });
+
+  it('resets samples while preserving project identity', () => {
+    const original = createDefaultProject({
+      id: 'project-1',
+      now: '2026-01-01T00:00:00.000Z',
+    });
+    const changed = assignSampleToPad(original, 'pad-1', {
+      id: 'sample-1',
+      name: 'Voice',
+    });
+    const reset = resetProjectToStarterKit(changed, '2026-01-03T00:00:00.000Z');
+
+    expect(reset.id).toBe('project-1');
+    expect(reset.createdAt).toBe(original.createdAt);
+    expect(reset.pads[0]?.sampleId).toBe('kick');
+  });
+});
