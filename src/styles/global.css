@@ -209,6 +209,10 @@ footer {
   font-weight: 800;
 }
 
+.tool-button.active {
+  color: #8e3028;
+}
+
 .error-toast {
   position: fixed;
   z-index: 40;
@@ -267,6 +271,11 @@ footer {
 
 .edit-panel {
   max-height: min(94dvh, 48rem);
+  overflow-y: auto;
+}
+
+.loop-panel {
+  max-height: min(94dvh, 46rem);
   overflow-y: auto;
 }
 
@@ -514,6 +523,216 @@ footer {
 .danger-action:disabled {
   cursor: wait;
   opacity: 0.58;
+}
+
+.loop-status {
+  min-height: 3.6rem;
+  padding: 0.65rem 0.75rem;
+  border-left: 0.3rem solid #aaa59b;
+  background: #f5f4f0;
+  color: #4c4842;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.loop-status.playing {
+  border-left-color: #26745c;
+  background: #eff7f4;
+  color: #205d4d;
+}
+
+.loop-status > span:not(.event-count) {
+  display: grid;
+  gap: 0.05rem;
+}
+
+.loop-status small {
+  font-size: 0.68rem;
+  font-weight: 750;
+}
+
+.loop-status strong {
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.event-count {
+  margin-left: auto;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.loop-pad-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.loop-pad-grid button {
+  min-width: 0;
+  height: 3.4rem;
+  padding: 0.4rem 0.45rem;
+  border: 1px solid rgb(0 0 0 / 18%);
+  border-radius: 0.35rem;
+  background: var(--loop-pad-color);
+  color: #17191a;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.loop-pad-grid button:active {
+  filter: brightness(0.9);
+  transform: translateY(0.1rem);
+}
+
+.loop-pad-grid button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.loop-pad-grid span {
+  font-size: 0.58rem;
+  font-weight: 850;
+  opacity: 0.7;
+}
+
+.loop-pad-grid strong {
+  width: 100%;
+  overflow: hidden;
+  font-size: 0.68rem;
+  line-height: 1;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loop-settings {
+  display: grid;
+  grid-template-columns: minmax(0, 0.6fr) minmax(0, 1.4fr);
+  gap: 0.75rem;
+}
+
+.tempo-field,
+.bars-field {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.tempo-field {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.tempo-field span,
+.bars-field legend {
+  color: #4c4842;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.tempo-field input {
+  width: 100%;
+  min-height: 3rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid #aaa59b;
+  border-radius: 0.35rem;
+  background: #ffffff;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.bars-field legend {
+  margin-bottom: 0.45rem;
+}
+
+.bars-field .segmented-control {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.tempo-field input:disabled,
+.bars-field button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.step-strip {
+  height: 1.2rem;
+  display: grid;
+  grid-template-columns: repeat(16, minmax(0, 1fr));
+  gap: 0.18rem;
+}
+
+.step-strip span {
+  border-radius: 0.12rem;
+  background: #dedbd3;
+}
+
+.step-strip span:nth-child(4n + 1) {
+  background: #c4c0b7;
+}
+
+.step-strip span.filled {
+  background: #8dbdad;
+}
+
+.step-strip span.current {
+  background: #26745c;
+  transform: scaleY(1.28);
+}
+
+.loop-transport {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.loop-transport button {
+  min-width: 0;
+  min-height: 3rem;
+  padding: 0.55rem 0.35rem;
+  border: 1px solid #c8c4ba;
+  border-radius: 0.35rem;
+  background: #f5f4f0;
+  color: #4c4842;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.loop-transport button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.loop-transport .transport-start {
+  border-color: #236c57;
+  background: #26745c;
+  color: #ffffff;
+}
+
+.loop-transport .transport-stop,
+.loop-transport .transport-record.active {
+  border-color: #8e3028;
+  background: #b64136;
+  color: #ffffff;
+}
+
+.loop-transport .transport-mute.active {
+  border-color: #655f56;
+  background: #655f56;
+  color: #ffffff;
 }
 
 .panel-actions {
@@ -813,12 +1032,26 @@ kbd.active {
   }
 }
 
-@media (max-width: 23rem) {
+@media (max-width: 27rem) {
   .project-name {
     display: none;
   }
 
   footer {
     justify-content: flex-end;
+  }
+
+  .footer-actions {
+    gap: 0.2rem;
+  }
+
+  .tool-button {
+    width: 2.75rem;
+    padding-inline: 0;
+    justify-content: center;
+  }
+
+  .tool-button span {
+    display: none;
   }
 }

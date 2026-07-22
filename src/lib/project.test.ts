@@ -6,6 +6,7 @@ import {
   createDefaultProject,
   resetProjectToStarterKit,
   updatePad,
+  updateLoopPattern,
 } from './project';
 
 describe('project model', () => {
@@ -78,5 +79,21 @@ describe('project model', () => {
       sampleId: null,
       binding: project.pads[0]?.binding,
     });
+  });
+
+  it('updates the persisted loop without mutating the project', () => {
+    const project = createDefaultProject({ id: 'project-1' });
+    const updated = updateLoopPattern(project, {
+      bpm: 128,
+      bars: 2,
+      events: [{ padId: 'pad-1', step: 3 }],
+    });
+
+    expect(updated.loop).toEqual({
+      bpm: 128,
+      bars: 2,
+      events: [{ padId: 'pad-1', step: 3 }],
+    });
+    expect(project.loop.events).toEqual([]);
   });
 });

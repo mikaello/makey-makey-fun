@@ -157,3 +157,11 @@ export function clearPad(
     ),
   };
 }
+
+export function updateLoopPattern(
+  project: ProjectV1,
+  loop: LoopPattern,
+  now = new Date().toISOString(),
+): ProjectV1 {
+  return { ...project, updatedAt: now, loop };
+}

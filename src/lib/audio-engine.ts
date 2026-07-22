@@ -45,6 +45,10 @@ export class AudioEngine {
     return this.buffers.get(sampleId)?.duration ?? null;
   }
 
+  get currentTime(): number {
+    return this.getContext().currentTime;
+  }
+
   getWaveform(sampleId: string, pointCount = 64): number[] | null {
     const buffer = this.buffers.get(sampleId);
     if (!buffer) return null;
@@ -114,6 +118,35 @@ export class AudioEngine {
     this.activeSources.delete(source);
     source.stop();
     return true;
+  }
+
+  schedule(
+    sampleId: string,
+    when: number,
+    options: {
+      gain: number;
+      trimEnd: number | null;
+      trimStart: number;
+    },
+  ): void {
+    const context = this.getContext();
+    const buffer = this.buffers.get(sampleId);
+    if (!buffer) return;
+    const trim = normalizeTrim(
+      buffer.duration,
+      options.trimStart,
+      options.trimEnd,
+    );
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    source.buffer = buffer;
+    gain.gain.value = options.gain;
+    source.connect(gain).connect(context.destination);
+    source.addEventListener('ended', () => this.activeSources.delete(source), {
+      once: true,
+    });
+    this.activeSources.add(source);
+    source.start(when, trim.start, Math.max(0, trim.end - trim.start));
   }
 
   close(): void {
