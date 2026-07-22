@@ -6,15 +6,32 @@ export class AudioEngine {
   private context: AudioContext | null = null;
   private readonly buffers = new Map<string, AudioBuffer>();
   private readonly activeSources = new Set<AudioBufferSourceNode>();
+  private starterLoaded = false;
 
   async unlock(): Promise<void> {
     const context = this.getContext();
     if (context.state !== 'running') await context.resume();
-    if (this.buffers.size === 0) {
+    if (!this.starterLoaded) {
       for (const sound of starterKit) {
         this.buffers.set(sound.id, createStarterBuffer(context, sound));
       }
+      this.starterLoaded = true;
     }
+  }
+
+  async decodeSample(sampleId: string, blob: Blob): Promise<number> {
+    const context = this.getContext();
+    const buffer = await context.decodeAudioData(await blob.arrayBuffer());
+    this.buffers.set(sampleId, buffer);
+    return buffer.duration;
+  }
+
+  hasSample(sampleId: string): boolean {
+    return this.buffers.has(sampleId);
+  }
+
+  removeSample(sampleId: string): void {
+    this.buffers.delete(sampleId);
   }
 
   async trigger(sampleId: string): Promise<void> {
@@ -41,6 +58,7 @@ export class AudioEngine {
     void this.context?.close();
     this.context = null;
     this.buffers.clear();
+    this.starterLoaded = false;
   }
 
   private getContext(): AudioContext {
