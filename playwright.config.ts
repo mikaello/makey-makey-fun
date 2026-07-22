@@ -18,15 +18,30 @@ export default defineConfig({
   projects: [
     {
       name: 'mobile-chromium',
-      use: { ...devices['Pixel 7'] },
+      use: { ...devices['Pixel 7'], browserName: 'chromium' },
     },
     {
       name: 'mobile-webkit',
-      use: { ...devices['iPhone 15'] },
+      use: { ...devices['iPhone 15'], browserName: 'webkit' },
+    },
+    {
+      name: 'tablet-chromium',
+      use: { ...devices['Galaxy Tab S4'], browserName: 'chromium' },
+    },
+    {
+      name: 'tablet-webkit',
+      use: { ...devices['iPad Pro 11'], browserName: 'webkit' },
     },
     {
       name: 'desktop-chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...devices['Desktop Chrome'], browserName: 'chromium' },
+    },
+    {
+      name: 'desktop-webkit',
+      use: {
+        browserName: 'webkit',
+        viewport: { width: 1440, height: 900 },
+      },
     },
   ],
 });

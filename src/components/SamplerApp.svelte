@@ -804,14 +804,22 @@
     );
   }
 
-  function padTextColor(color: string): '#151718' | '#ffffff' {
+  function padTextColor(color: string): '#111111' | '#ffffff' {
     const value = color.replace('#', '');
-    const red = Number.parseInt(value.slice(0, 2), 16);
-    const green = Number.parseInt(value.slice(2, 4), 16);
-    const blue = Number.parseInt(value.slice(4, 6), 16);
-    return red * 0.299 + green * 0.587 + blue * 0.114 > 145
-      ? '#151718'
-      : '#ffffff';
+    const channels = [0, 2, 4].map((offset) => {
+      const channel =
+        Number.parseInt(value.slice(offset, offset + 2), 16) / 255;
+      return channel <= 0.04045
+        ? channel / 12.92
+        : ((channel + 0.055) / 1.055) ** 2.4;
+    });
+    const luminance =
+      (channels[0] ?? 0) * 0.2126 +
+      (channels[1] ?? 0) * 0.7152 +
+      (channels[2] ?? 0) * 0.0722;
+    const darkContrast = (luminance + 0.05) / 0.0556;
+    const lightContrast = 1.05 / (luminance + 0.05);
+    return darkContrast >= lightContrast ? '#111111' : '#ffffff';
   }
 
   function sampleNameFromFile(filename: string): string {
@@ -853,11 +861,6 @@
   onkeyup={handleKeyUp}
   onblur={handleWindowBlur}
 />
-
-<svelte:head>
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-</svelte:head>
 
 <main
   class="app-shell"
@@ -1009,7 +1012,7 @@
               type="button"
               aria-label={`Select pad ${index + 1}`}
               aria-pressed={selectedPadId === pad.id}
-              style={`--picker-color: ${pad.color}`}
+              style={`--picker-color: ${pad.color}; --picker-text: ${padTextColor(pad.color)}`}
               onclick={() => (selectedPadId = pad.id)}
             >
               {String(index + 1).padStart(2, '0')}
@@ -1142,7 +1145,7 @@
               type="button"
               aria-label={`Loop pad ${index + 1}: ${pad.label}`}
               disabled={!pad.sampleId}
-              style={`--loop-pad-color: ${pad.color}`}
+              style={`--loop-pad-color: ${pad.color}; --loop-pad-text: ${padTextColor(pad.color)}`}
               onclick={() => void playPad(pad)}
             >
               <span>{String(index + 1).padStart(2, '0')}</span>
@@ -1184,7 +1187,7 @@
           </fieldset>
         </div>
 
-        <div class="step-strip" aria-label="Current bar steps">
+        <div class="step-strip" role="img" aria-label="Current bar steps">
           {#each Array.from({ length: 16 }, (_, index) => index) as step (step)}
             <span
               class:current={loopPlaying && currentLoopStep % 16 === step}
@@ -1429,7 +1432,7 @@
               aria-label={`Select pad ${index + 1}`}
               aria-pressed={selectedPadId === pad.id}
               disabled={recordingState !== 'idle'}
-              style={`--picker-color: ${pad.color}`}
+              style={`--picker-color: ${pad.color}; --picker-text: ${padTextColor(pad.color)}`}
               onclick={() => (selectedPadId = pad.id)}
             >
               {String(index + 1).padStart(2, '0')}
