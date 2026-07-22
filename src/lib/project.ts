@@ -115,3 +115,45 @@ export function assignSampleToPad(
     ),
   };
 }
+
+export function updatePad(
+  project: ProjectV1,
+  padId: string,
+  changes: Pick<
+    Pad,
+    'gain' | 'label' | 'playbackMode' | 'trimEnd' | 'trimStart'
+  >,
+  now = new Date().toISOString(),
+): ProjectV1 {
+  return {
+    ...project,
+    updatedAt: now,
+    pads: project.pads.map((pad) =>
+      pad.id === padId ? { ...pad, ...changes } : pad,
+    ),
+  };
+}
+
+export function clearPad(
+  project: ProjectV1,
+  padId: string,
+  now = new Date().toISOString(),
+): ProjectV1 {
+  return {
+    ...project,
+    updatedAt: now,
+    pads: project.pads.map((pad) =>
+      pad.id === padId
+        ? {
+            ...pad,
+            label: 'Empty pad',
+            sampleId: null,
+            gain: 0.9,
+            playbackMode: 'one-shot',
+            trimStart: 0,
+            trimEnd: null,
+          }
+        : pad,
+    ),
+  };
+}

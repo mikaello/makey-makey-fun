@@ -5,6 +5,7 @@ import {
   type ProjectV1,
   type SampleRecord,
 } from './project';
+import type { WaveformRecord } from './sample-editing';
 
 const DATABASE_NAME = 'makey-sampler';
 const ACTIVE_PROJECT_KEY = 'active-project';
@@ -24,6 +25,10 @@ interface SamplerDatabase extends DBSchema {
   meta: {
     key: string;
     value: { key: string; value: string };
+  };
+  waveforms: {
+    key: string;
+    value: WaveformRecord;
   };
 }
 
@@ -67,6 +72,42 @@ export async function saveSample(sample: SampleRecord): Promise<void> {
   await database.put('samples', await toStoredSample(sample));
 }
 
+export async function loadWaveform(
+  sampleId: string,
+): Promise<WaveformRecord | undefined> {
+  const database = await getDatabase();
+  return database.get('waveforms', sampleId);
+}
+
+export async function saveWaveform(waveform: WaveformRecord): Promise<void> {
+  const database = await getDatabase();
+  await database.put('waveforms', waveform);
+}
+
+export async function saveEditedProject(
+  project: ProjectV1,
+  options: {
+    deletedSampleId?: string;
+    updatedSample?: SampleRecord;
+  } = {},
+): Promise<void> {
+  const database = await getDatabase();
+  const storedSample = options.updatedSample
+    ? await toStoredSample(options.updatedSample)
+    : undefined;
+  const transaction = database.transaction(
+    ['projects', 'samples', 'waveforms'],
+    'readwrite',
+  );
+  await transaction.objectStore('projects').put(project);
+  if (storedSample) await transaction.objectStore('samples').put(storedSample);
+  if (options.deletedSampleId) {
+    await transaction.objectStore('samples').delete(options.deletedSampleId);
+    await transaction.objectStore('waveforms').delete(options.deletedSampleId);
+  }
+  await transaction.done;
+}
+
 export async function saveSampleAssignment(
   project: ProjectV1,
   sample: SampleRecord,
@@ -91,10 +132,14 @@ export async function deleteSamplesForProject(
   projectId: string,
 ): Promise<void> {
   const database = await getDatabase();
-  const transaction = database.transaction('samples', 'readwrite');
-  const index = transaction.store.index('by-project');
+  const transaction = database.transaction(
+    ['samples', 'waveforms'],
+    'readwrite',
+  );
+  const index = transaction.objectStore('samples').index('by-project');
   let cursor = await index.openCursor(projectId);
   while (cursor) {
+    await transaction.objectStore('waveforms').delete(cursor.primaryKey);
     await cursor.delete();
     cursor = await cursor.continue();
   }
@@ -104,12 +149,13 @@ export async function deleteSamplesForProject(
 export async function resetWorkspace(project: ProjectV1): Promise<void> {
   const database = await getDatabase();
   const transaction = database.transaction(
-    ['projects', 'samples', 'meta'],
+    ['projects', 'samples', 'meta', 'waveforms'],
     'readwrite',
   );
   const sampleIndex = transaction.objectStore('samples').index('by-project');
   let cursor = await sampleIndex.openCursor(project.id);
   while (cursor) {
+    await transaction.objectStore('waveforms').delete(cursor.primaryKey);
     await cursor.delete();
     cursor = await cursor.continue();
   }
@@ -127,11 +173,12 @@ export async function replaceWorkspace(
   const database = await getDatabase();
   const storedSamples = await Promise.all(samples.map(toStoredSample));
   const transaction = database.transaction(
-    ['projects', 'samples', 'meta'],
+    ['projects', 'samples', 'meta', 'waveforms'],
     'readwrite',
   );
   await transaction.objectStore('projects').clear();
   await transaction.objectStore('samples').clear();
+  await transaction.objectStore('waveforms').clear();
   await transaction.objectStore('meta').clear();
   await transaction.objectStore('projects').put(project);
   for (const sample of storedSamples)
@@ -152,12 +199,19 @@ export async function clearSamplerDatabase(): Promise<void> {
 }
 
 function getDatabase(): Promise<IDBPDatabase<SamplerDatabase>> {
-  databasePromise ??= openDB<SamplerDatabase>(DATABASE_NAME, 1, {
-    upgrade(database) {
-      database.createObjectStore('projects', { keyPath: 'id' });
-      const samples = database.createObjectStore('samples', { keyPath: 'id' });
-      samples.createIndex('by-project', 'projectId');
-      database.createObjectStore('meta', { keyPath: 'key' });
+  databasePromise ??= openDB<SamplerDatabase>(DATABASE_NAME, 2, {
+    upgrade(database, oldVersion) {
+      if (oldVersion < 1) {
+        database.createObjectStore('projects', { keyPath: 'id' });
+        const samples = database.createObjectStore('samples', {
+          keyPath: 'id',
+        });
+        samples.createIndex('by-project', 'projectId');
+        database.createObjectStore('meta', { keyPath: 'key' });
+      }
+      if (oldVersion < 2) {
+        database.createObjectStore('waveforms', { keyPath: 'sampleId' });
+      }
     },
   });
   return databasePromise;

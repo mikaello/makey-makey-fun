@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   assignSampleToPad,
+  clearPad,
   createDefaultProject,
   resetProjectToStarterKit,
+  updatePad,
 } from './project';
 
 describe('project model', () => {
@@ -57,5 +59,24 @@ describe('project model', () => {
     expect(reset.id).toBe('project-1');
     expect(reset.createdAt).toBe(original.createdAt);
     expect(reset.pads[0]?.sampleId).toBe('kick');
+  });
+
+  it('updates and clears one pad without changing its binding', () => {
+    const project = createDefaultProject({ id: 'project-1' });
+    const edited = updatePad(project, 'pad-1', {
+      label: 'Short kick',
+      gain: 1.2,
+      playbackMode: 'loop',
+      trimStart: 0.1,
+      trimEnd: 0.3,
+    });
+    const cleared = clearPad(edited, 'pad-1');
+
+    expect(edited.pads[0]).toMatchObject({ label: 'Short kick', gain: 1.2 });
+    expect(cleared.pads[0]).toMatchObject({
+      label: 'Empty pad',
+      sampleId: null,
+      binding: project.pads[0]?.binding,
+    });
   });
 });
