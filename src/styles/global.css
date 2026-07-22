@@ -140,6 +140,25 @@ h1 {
   opacity: 0.76;
 }
 
+.pad-meta {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.pad-binding {
+  padding: 0.18rem 0.28rem;
+  border: 1px solid currentColor;
+  border-radius: 0.2rem;
+  font-size: 0.6rem;
+  font-weight: 850;
+  line-height: 1;
+  opacity: 0.72;
+  text-transform: uppercase;
+}
+
 .pad-label {
   width: 100%;
   font-size: clamp(0.78rem, 2.6cqw, 1rem);
@@ -159,6 +178,147 @@ footer {
   font-weight: 700;
 }
 
+.tool-button,
+.icon-button {
+  border: 0;
+  background: transparent;
+  color: #2c4f45;
+  cursor: pointer;
+}
+
+.tool-button {
+  min-height: 2.75rem;
+  padding: 0.45rem 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.dialog-layer {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  align-items: end;
+}
+
+.dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: rgb(20 22 22 / 58%);
+}
+
+.device-panel {
+  position: relative;
+  width: min(100%, 34rem);
+  max-height: min(88dvh, 34rem);
+  margin: 0 auto;
+  padding: 1.1rem 1rem max(1rem, env(safe-area-inset-bottom));
+  border-radius: 0.5rem 0.5rem 0 0;
+  background: #ffffff;
+  box-shadow: 0 -0.5rem 2rem rgb(0 0 0 / 18%);
+  display: grid;
+  gap: 1rem;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.panel-header h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  letter-spacing: 0;
+}
+
+.icon-button {
+  width: 2.75rem;
+  height: 2.75rem;
+  display: grid;
+  place-items: center;
+}
+
+.input-status {
+  min-height: 3.25rem;
+  padding: 0.75rem;
+  border-left: 0.3rem solid #28a88c;
+  background: #eff7f4;
+  color: #205d4d;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-weight: 800;
+}
+
+.key-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+kbd {
+  min-width: 0;
+  min-height: 2.7rem;
+  border: 1px solid #c8c4ba;
+  border-bottom-width: 0.2rem;
+  border-radius: 0.3rem;
+  background: #f5f4f0;
+  display: grid;
+  place-items: center;
+  font:
+    800 0.72rem/1 Inter,
+    ui-sans-serif,
+    system-ui,
+    sans-serif;
+  text-transform: uppercase;
+}
+
+kbd.active {
+  border-color: #236c57;
+  background: #28a88c;
+  color: #101f1b;
+  transform: translateY(0.12rem);
+}
+
+.toggle-row {
+  min-height: 3.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  cursor: pointer;
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.toggle-label span {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.toggle-label small {
+  color: #655f56;
+  font-size: 0.72rem;
+}
+
+.toggle-row input {
+  width: 2.8rem;
+  height: 1.5rem;
+  accent-color: #26745c;
+}
+
 @media (min-width: 42rem) and (orientation: landscape) {
   .app-shell {
     gap: 1rem;
@@ -168,6 +328,11 @@ footer {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     grid-template-rows: repeat(3, minmax(5.5rem, 1fr));
     gap: 0.75rem;
+  }
+
+  .device-panel {
+    margin-bottom: 1rem;
+    border-radius: 0.5rem;
   }
 }
 

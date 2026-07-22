@@ -25,6 +25,7 @@ test('supports simultaneous pointer presses without changing the pad layout', as
   page,
 }) => {
   await page.goto('/');
+  await page.locator('main[data-client-ready="true"]').waitFor();
   const pads = page
     .getByRole('region', { name: 'Sampler pads' })
     .getByRole('button');
