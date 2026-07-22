@@ -7,9 +7,12 @@ import {
   clearSamplerDatabase,
   deleteSamplesForProject,
   loadWorkspace,
+  loadWaveform,
   replaceWorkspace,
+  saveEditedProject,
   saveProject,
   saveSample,
+  saveWaveform,
 } from './storage';
 
 afterEach(async () => {
@@ -63,5 +66,43 @@ describe('local workspace storage', () => {
     const restored = await loadWorkspace();
     expect(restored.project.id).toBe('project-2');
     expect(restored.samples).toEqual([]);
+  });
+
+  it('stores derived waveforms separately from sample blobs', async () => {
+    await loadWorkspace();
+    await saveWaveform({
+      sampleId: 'sample-1',
+      duration: 1.2,
+      points: [0.1, 0.8],
+    });
+
+    expect(await loadWaveform('sample-1')).toEqual({
+      sampleId: 'sample-1',
+      duration: 1.2,
+      points: [0.1, 0.8],
+    });
+  });
+
+  it('saves project edits and custom sample names together', async () => {
+    const project = createDefaultProject({ id: 'project-1' });
+    await saveProject(project);
+    const sample: SampleRecord = {
+      id: 'sample-1',
+      projectId: project.id,
+      name: 'Before',
+      blob: new Blob(['audio']),
+      mimeType: 'audio/wav',
+      duration: 1,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    await saveSample(sample);
+
+    await saveEditedProject(
+      { ...project, name: 'Edited project' },
+      { updatedSample: { ...sample, name: 'After' } },
+    );
+    const restored = await loadWorkspace();
+    expect(restored.project.name).toBe('Edited project');
+    expect(restored.samples[0]?.name).toBe('After');
   });
 });

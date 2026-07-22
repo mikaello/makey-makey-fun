@@ -265,6 +265,11 @@ footer {
   max-height: min(92dvh, 38rem);
 }
 
+.edit-panel {
+  max-height: min(94dvh, 48rem);
+  overflow-y: auto;
+}
+
 .panel-header {
   display: flex;
   align-items: center;
@@ -351,6 +356,164 @@ footer {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.selected-sound .icon-button {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.selected-sound .icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.editor-loading {
+  min-height: 12rem;
+  color: #655f56;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
+.waveform {
+  height: 7rem;
+  padding: 0.65rem;
+  border: 1px solid #c8c4ba;
+  border-radius: 0.35rem;
+  background: #f5f4f0;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  overflow: hidden;
+}
+
+.waveform span {
+  min-width: 1px;
+  max-height: 100%;
+  background: #26745c;
+  flex: 1 1 0;
+}
+
+.editor-field,
+.range-field {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.editor-field > span,
+.range-field strong,
+.mode-field legend {
+  color: #4c4842;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.editor-field input[type='text'] {
+  width: 100%;
+  min-height: 2.9rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #aaa59b;
+  border-radius: 0.35rem;
+  font: inherit;
+}
+
+.trim-controls {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.range-field > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.range-field output {
+  color: #655f56;
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+}
+
+.range-field input[type='range'] {
+  width: 100%;
+  height: 2rem;
+  margin: 0;
+  accent-color: #26745c;
+  cursor: pointer;
+}
+
+.mode-field {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+
+.mode-field legend {
+  margin-bottom: 0.45rem;
+}
+
+.segmented-control {
+  padding: 0.2rem;
+  border: 1px solid #c8c4ba;
+  border-radius: 0.4rem;
+  background: #eceae4;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.2rem;
+}
+
+.segmented-control button {
+  min-height: 2.65rem;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: #4c4842;
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.segmented-control button.active {
+  background: #ffffff;
+  box-shadow: 0 1px 0.3rem rgb(0 0 0 / 12%);
+  color: #205d4d;
+}
+
+.edit-preview-row {
+  display: grid;
+}
+
+.edit-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 0.75fr) minmax(0, 1fr);
+  gap: 0.65rem;
+}
+
+.danger-action {
+  min-height: 3rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid #c4857e;
+  border-radius: 0.4rem;
+  background: #fff7f5;
+  color: #8e3028;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.danger-action:disabled {
+  cursor: wait;
+  opacity: 0.58;
 }
 
 .panel-actions {

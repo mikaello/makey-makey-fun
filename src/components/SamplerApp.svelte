@@ -1,7 +1,9 @@
 <script lang="ts">
   import {
     Activity,
+    Check,
     Download,
+    Edit3,
     FileAudio,
     FolderOpen,
     Library,
@@ -12,11 +14,12 @@
     PlugZap,
     RefreshCw,
     RotateCcw,
+    Save,
     Square,
+    Trash2,
     Upload,
     Volume2,
     VolumeX,
-    Check,
     X,
   } from '@lucide/svelte';
   import { onDestroy, onMount } from 'svelte';
@@ -41,21 +44,27 @@
   } from '../lib/microphone-recorder';
   import {
     assignSampleToPad,
+    clearPad,
     createDefaultProject,
     resetProjectToStarterKit,
     type Pad,
     type ProjectV1,
     type SampleRecord,
+    updatePad,
   } from '../lib/project';
+  import { normalizeTrim } from '../lib/sample-editing';
   import {
     loadWorkspace,
+    loadWaveform,
     replaceWorkspace,
     resetWorkspace,
+    saveEditedProject,
     saveSampleAssignment,
+    saveWaveform,
   } from '../lib/storage';
 
   type ActivePointer = { padId: string; sourceId: string };
-  type OpenPanel = 'device' | 'record' | 'sounds' | null;
+  type OpenPanel = 'device' | 'edit' | 'record' | 'sounds' | null;
   type RecordingState =
     'idle' | 'requesting' | 'recording' | 'preview' | 'saving';
 
@@ -65,6 +74,7 @@
   const activePadSources = new SvelteMap<string, SvelteSet<string>>();
   const activePads = new SvelteSet<string>();
   const activeInputs = new SvelteSet<MakeyKeyboardCode>();
+  const loopingPads = new SvelteSet<string>();
   const samples = new SvelteMap<string, SampleRecord>();
 
   let project: ProjectV1 = createDefaultProject();
@@ -82,6 +92,15 @@
   let recordingElapsed = 0;
   let recordingTimer: ReturnType<typeof setInterval> | null = null;
   let recordingError = '';
+  let editBusy = false;
+  let editSaving = false;
+  let editLabel = '';
+  let editGain = 0.9;
+  let editPlaybackMode: Pad['playbackMode'] = 'one-shot';
+  let editTrimStart = 0;
+  let editTrimEnd = 0;
+  let editDuration = 0;
+  let editWaveform: number[] = [];
   let lastInput = 'Waiting for input';
   let errorMessage = '';
 
@@ -118,7 +137,15 @@
       if (customSample && !audio.hasSample(customSample.id)) {
         await audio.decodeSample(customSample.id, customSample.blob);
       }
-      await audio.trigger(pad.sampleId);
+      await audio.trigger(pad.sampleId, {
+        gain: pad.gain,
+        loopId: pad.id,
+        playbackMode: pad.playbackMode,
+        trimStart: pad.trimStart,
+        trimEnd: pad.trimEnd,
+      });
+      if (audio.isLooping(pad.id)) loopingPads.add(pad.id);
+      else loopingPads.delete(pad.id);
       audioState = 'ready';
     } catch (error) {
       audioState = 'error';
@@ -247,6 +274,7 @@
     const resetProject = resetProjectToStarterKit(project);
     try {
       await resetWorkspace(resetProject);
+      stopAllPadLoops();
       for (const sampleId of samples.keys()) audio.removeSample(sampleId);
       samples.clear();
       project = resetProject;
@@ -289,6 +317,7 @@
     try {
       const imported = await importPortableProject(file);
       await replaceWorkspace(imported.project, imported.samples);
+      stopAllPadLoops();
       for (const sampleId of samples.keys()) audio.removeSample(sampleId);
       samples.clear();
       for (const sample of imported.samples) samples.set(sample.id, sample);
@@ -313,6 +342,163 @@
       audioState = 'error';
       showError(error, 'Audio is unavailable in this browser.');
     }
+  }
+
+  async function openEditor(): Promise<void> {
+    const pad = project.pads.find(
+      (candidate) => candidate.id === selectedPadId,
+    );
+    if (!pad?.sampleId) return;
+
+    editBusy = true;
+    editLabel = pad.label;
+    editGain = pad.gain;
+    editPlaybackMode = pad.playbackMode;
+    editWaveform = [];
+    openPanel = 'edit';
+
+    try {
+      const customSample = samples.get(pad.sampleId);
+      if (customSample && !audio.hasSample(customSample.id)) {
+        await audio.decodeSample(customSample.id, customSample.blob);
+      } else {
+        audio.prepare();
+      }
+
+      const duration = audio.getSampleDuration(pad.sampleId) ?? 0;
+      const cachedWaveform = customSample
+        ? await loadWaveform(customSample.id)
+        : undefined;
+      const waveform =
+        cachedWaveform?.duration === duration
+          ? cachedWaveform.points
+          : (audio.getWaveform(pad.sampleId) ?? []);
+      if (customSample && cachedWaveform?.duration !== duration) {
+        await saveWaveform({
+          sampleId: customSample.id,
+          duration,
+          points: waveform,
+        });
+      }
+
+      const trim = normalizeTrim(duration, pad.trimStart, pad.trimEnd);
+      editDuration = duration;
+      editTrimStart = trim.start;
+      editTrimEnd = trim.end;
+      editWaveform = waveform;
+    } catch (error) {
+      showError(error, 'This sample could not be opened for editing.');
+      openPanel = 'sounds';
+    } finally {
+      editBusy = false;
+    }
+  }
+
+  function updateTrimStart(event: Event): void {
+    const value = (event.currentTarget as HTMLInputElement).valueAsNumber;
+    editTrimStart = Math.min(value, Math.max(0, editTrimEnd - 0.01));
+  }
+
+  function updateTrimEnd(event: Event): void {
+    const value = (event.currentTarget as HTMLInputElement).valueAsNumber;
+    editTrimEnd = Math.max(value, Math.min(editDuration, editTrimStart + 0.01));
+  }
+
+  async function previewEdit(): Promise<void> {
+    const pad = project.pads.find(
+      (candidate) => candidate.id === selectedPadId,
+    );
+    if (!pad?.sampleId) return;
+    try {
+      await audio.trigger(pad.sampleId, {
+        gain: editGain,
+        playbackMode: 'one-shot',
+        trimStart: editTrimStart,
+        trimEnd: editTrimEnd,
+      });
+    } catch (error) {
+      showError(error, 'This edit could not be previewed.');
+    }
+  }
+
+  async function saveEdit(): Promise<void> {
+    const label = editLabel.trim();
+    if (!label) {
+      errorMessage = 'Pad names cannot be empty.';
+      return;
+    }
+    const trim = normalizeTrim(editDuration, editTrimStart, editTrimEnd);
+    const updatedProject = updatePad(project, selectedPadId, {
+      label: label.slice(0, 48),
+      gain: editGain,
+      playbackMode: editPlaybackMode,
+      trimStart: trim.start,
+      trimEnd: trim.end >= editDuration ? null : trim.end,
+    });
+    const currentPad = project.pads.find((pad) => pad.id === selectedPadId);
+    const customSample = currentPad?.sampleId
+      ? samples.get(currentPad.sampleId)
+      : undefined;
+    const updatedSample = customSample
+      ? { ...customSample, name: label.slice(0, 48) }
+      : undefined;
+    editSaving = true;
+    try {
+      if (editPlaybackMode === 'one-shot') {
+        audio.stopLoop(selectedPadId);
+        loopingPads.delete(selectedPadId);
+      }
+      await saveEditedProject(updatedProject, { updatedSample });
+      if (updatedSample) samples.set(updatedSample.id, updatedSample);
+      project = updatedProject;
+      closePanel();
+    } catch (error) {
+      showError(error, 'This edit could not be saved.');
+    } finally {
+      editSaving = false;
+    }
+  }
+
+  async function clearSelectedPad(): Promise<void> {
+    const pad = project.pads.find(
+      (candidate) => candidate.id === selectedPadId,
+    );
+    if (!pad?.sampleId) return;
+    const sampleId = pad.sampleId;
+    const isCustomSample = samples.has(sampleId);
+    const updatedProject = clearPad(project, pad.id);
+    editSaving = true;
+    try {
+      await saveEditedProject(
+        updatedProject,
+        isCustomSample ? { deletedSampleId: sampleId } : undefined,
+      );
+      audio.stopLoop(pad.id);
+      loopingPads.delete(pad.id);
+      if (isCustomSample) {
+        audio.removeSample(sampleId);
+        samples.delete(sampleId);
+      }
+      project = updatedProject;
+      closePanel();
+    } catch (error) {
+      showError(error, 'This pad could not be cleared.');
+    } finally {
+      editSaving = false;
+    }
+  }
+
+  function waveformBarHeight(value: number): string {
+    return `${Math.max(8, value * 100)}%`;
+  }
+
+  function formatSeconds(value: number): string {
+    return `${value.toFixed(2)}s`;
+  }
+
+  function stopAllPadLoops(): void {
+    for (const padId of loopingPads) audio.stopLoop(padId);
+    loopingPads.clear();
   }
 
   async function startRecording(): Promise<void> {
@@ -553,11 +739,11 @@
   <section class="pad-grid" aria-label="Sampler pads">
     {#each project.pads as pad, index (pad.id)}
       <button
-        class:active={activePads.has(pad.id)}
+        class:active={activePads.has(pad.id) || loopingPads.has(pad.id)}
         class="pad"
         type="button"
         aria-label={`Pad ${index + 1}: ${pad.label}`}
-        aria-pressed={activePads.has(pad.id)}
+        aria-pressed={activePads.has(pad.id) || loopingPads.has(pad.id)}
         style={`--pad-color: ${pad.color}; --pad-text: ${padTextColor(pad.color)}`}
         onpointerdown={(event) => handlePointerDown(event, pad)}
         onpointerup={handlePointerEnd}
@@ -675,6 +861,16 @@
                   ?.label}</strong
               >
             </span>
+            <button
+              class="icon-button"
+              type="button"
+              aria-label="Edit selected sound"
+              disabled={!project.pads.find((pad) => pad.id === selectedPadId)
+                ?.sampleId}
+              onclick={openEditor}
+            >
+              <Edit3 size={20} />
+            </button>
           </div>
         {/if}
 
@@ -732,6 +928,155 @@
             <span>Reset kit</span>
           </button>
         </div>
+      </section>
+    {:else if openPanel === 'edit'}
+      <section
+        class="device-panel edit-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-title"
+      >
+        <header class="panel-header">
+          <div>
+            <p class="eyebrow">Nondestructive</p>
+            <h2 id="edit-title">Edit sample</h2>
+          </div>
+          <button
+            class="icon-button"
+            type="button"
+            aria-label="Close"
+            onclick={closePanel}
+          >
+            <X size={22} />
+          </button>
+        </header>
+
+        {#if editBusy}
+          <div class="editor-loading" role="status">
+            <LoaderCircle class="spin" size={22} />
+            <span>Reading waveform</span>
+          </div>
+        {:else}
+          <div class="waveform" aria-label="Sample waveform">
+            {#each editWaveform as point, index (index)}
+              <span style={`height: ${waveformBarHeight(point)}`}></span>
+            {/each}
+          </div>
+
+          <label class="editor-field" for="sample-name">
+            <span>Name</span>
+            <input
+              id="sample-name"
+              type="text"
+              maxlength="48"
+              bind:value={editLabel}
+            />
+          </label>
+
+          <div class="trim-controls">
+            <label class="range-field" for="trim-start">
+              <span
+                ><strong>Trim start</strong><output
+                  >{formatSeconds(editTrimStart)}</output
+                ></span
+              >
+              <input
+                id="trim-start"
+                type="range"
+                min="0"
+                max={editDuration}
+                step="0.01"
+                value={editTrimStart}
+                oninput={updateTrimStart}
+              />
+            </label>
+            <label class="range-field" for="trim-end">
+              <span
+                ><strong>Trim end</strong><output
+                  >{formatSeconds(editTrimEnd)}</output
+                ></span
+              >
+              <input
+                id="trim-end"
+                type="range"
+                min="0"
+                max={editDuration}
+                step="0.01"
+                value={editTrimEnd}
+                oninput={updateTrimEnd}
+              />
+            </label>
+            <label class="range-field" for="sample-gain">
+              <span
+                ><strong>Gain</strong><output
+                  >{Math.round(editGain * 100)}%</output
+                ></span
+              >
+              <input
+                id="sample-gain"
+                type="range"
+                min="0"
+                max="1.5"
+                step="0.05"
+                bind:value={editGain}
+              />
+            </label>
+          </div>
+
+          <fieldset class="mode-field">
+            <legend>Playback</legend>
+            <div class="segmented-control">
+              <button
+                class:active={editPlaybackMode === 'one-shot'}
+                type="button"
+                aria-pressed={editPlaybackMode === 'one-shot'}
+                onclick={() => (editPlaybackMode = 'one-shot')}>One-shot</button
+              >
+              <button
+                class:active={editPlaybackMode === 'loop'}
+                type="button"
+                aria-pressed={editPlaybackMode === 'loop'}
+                onclick={() => (editPlaybackMode = 'loop')}>Loop</button
+              >
+            </div>
+          </fieldset>
+
+          <div class="edit-preview-row">
+            <button
+              class="secondary-action"
+              type="button"
+              onclick={previewEdit}
+            >
+              <Play size={19} />
+              <span>Preview edit</span>
+            </button>
+          </div>
+
+          <div class="edit-actions">
+            <button
+              class="danger-action"
+              type="button"
+              disabled={editSaving}
+              onclick={clearSelectedPad}
+            >
+              <Trash2 size={19} />
+              <span>Clear pad</span>
+            </button>
+            <button
+              class="primary-action"
+              type="button"
+              disabled={editSaving}
+              onclick={saveEdit}
+            >
+              {#if editSaving}
+                <LoaderCircle class="spin" size={19} />
+              {:else}
+                <Save size={19} />
+              {/if}
+              <span>{editSaving ? 'Saving' : 'Save changes'}</span>
+            </button>
+          </div>
+        {/if}
       </section>
     {:else if openPanel === 'record'}
       <section
