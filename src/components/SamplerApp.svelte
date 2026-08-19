@@ -1097,6 +1097,18 @@
     <span class="project-name">{displayProjectName()}</span>
     <span class="footer-actions">
       <button
+        class="tool-button record-tool-button"
+        type="button"
+        aria-label={t('nav.record')}
+        title={t('nav.record')}
+        onclick={() => (openPanel = 'record')}
+      >
+        <span class="record-tool-icon">
+          <Mic size={16} strokeWidth={2.5} />
+        </span>
+        <span>{t('nav.record')}</span>
+      </button>
+      <button
         class:active={loopPlaying}
         class="tool-button"
         type="button"
@@ -1106,16 +1118,6 @@
       >
         <Repeat2 size={18} strokeWidth={2.25} />
         <span>{t('nav.loop')}</span>
-      </button>
-      <button
-        class="tool-button"
-        type="button"
-        aria-label={t('nav.record')}
-        title={t('nav.record')}
-        onclick={() => (openPanel = 'record')}
-      >
-        <Mic size={18} strokeWidth={2.25} />
-        <span>{t('nav.record')}</span>
       </button>
       <button
         class="tool-button"
