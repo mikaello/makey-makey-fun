@@ -164,6 +164,9 @@ test('records into a pad, stops tracks, and restores the sample', async ({
 
   await expect(dialog.getByRole('button', { name: 'Preview' })).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Retry' })).toBeVisible();
+  await expect(
+    dialog.getByRole('textbox', { name: 'Recording name' }),
+  ).toHaveValue('Recording 01');
   await expect
     .poll(() =>
       page.evaluate(
@@ -181,6 +184,35 @@ test('records into a pad, stops tracks, and restores the sample', async ({
   await page.locator('main[data-storage-ready="true"]').waitFor();
   await expect(
     page.getByRole('button', { name: /Pad 1: Recording 01/ }),
+  ).toBeVisible();
+});
+
+test('saves a custom recording name', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('main[data-storage-ready="true"]').waitFor();
+  await page.getByRole('button', { name: 'Record', exact: true }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Record a sound' });
+  await dialog.getByRole('button', { name: 'Start recording' }).click();
+  await dialog.getByRole('button', { name: 'Stop recording' }).click();
+
+  const name = dialog.getByRole('textbox', { name: 'Recording name' });
+  await name.fill('   ');
+  await dialog.getByRole('button', { name: 'Accept' }).click();
+  await expect(dialog.getByRole('alert')).toHaveText(
+    'Recording names cannot be empty.',
+  );
+
+  await name.fill('  My sound  ');
+  await dialog.getByRole('button', { name: 'Accept' }).click();
+  await expect(
+    page.getByRole('button', { name: 'Pad 1: My sound' }),
+  ).toBeVisible();
+
+  await page.reload();
+  await page.locator('main[data-storage-ready="true"]').waitFor();
+  await expect(
+    page.getByRole('button', { name: 'Pad 1: My sound' }),
   ).toBeVisible();
 });
 
