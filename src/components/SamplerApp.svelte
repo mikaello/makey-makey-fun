@@ -113,6 +113,11 @@
   let recordingSession: MicrophoneRecorder | null = null;
   let pendingRecording: (RecordingResult & { id: string }) | null = null;
   let recordingElapsed = 0;
+  let previewElapsed = 0;
+  let previewDuration = 0;
+  let previewPlaying = false;
+  let previewTimer: ReturnType<typeof setInterval> | null = null;
+  let previewGeneration = 0;
   let recordingLevel = 0;
   let recordingLevelFrame: number | null = null;
   let recordingTimer: ReturnType<typeof setInterval> | null = null;
@@ -776,6 +781,7 @@
       const result = await recordingSession.stop();
       pendingRecording = { ...result, id: crypto.randomUUID() };
       recordingElapsed = result.duration;
+      previewDuration = result.duration;
       recordingState = 'preview';
     } catch (error) {
       recordingState = 'idle';
@@ -786,14 +792,32 @@
   }
 
   async function previewRecording(): Promise<void> {
-    if (!pendingRecording) return;
+    if (!pendingRecording || previewPlaying) return;
+    const recording = pendingRecording;
+    const generation = ++previewGeneration;
+    previewElapsed = 0;
+    previewPlaying = true;
     try {
-      if (!audio.hasSample(pendingRecording.id)) {
-        await audio.decodeSample(pendingRecording.id, pendingRecording.blob);
+      if (!audio.hasSample(recording.id)) {
+        await audio.decodeSample(recording.id, recording.blob);
       }
-      await audio.trigger(pendingRecording.id);
+      if (generation !== previewGeneration) return;
+      previewDuration =
+        audio.getSampleDuration(recording.id) ?? recording.duration;
+      await audio.trigger(recording.id);
+      if (generation !== previewGeneration) return;
       audioState = 'ready';
+      const startedAt = audio.currentTime;
+      previewTimer = setInterval(() => {
+        previewElapsed = Math.min(
+          previewDuration,
+          audio.currentTime - startedAt,
+        );
+        if (previewElapsed >= previewDuration) stopPreviewTimer();
+      }, 100);
     } catch (error) {
+      if (generation !== previewGeneration) return;
+      stopPreviewTimer();
       showError(error, t('error.recordPreview'));
     }
   }
@@ -851,8 +875,18 @@
   }
 
   function clearPendingRecording(): void {
+    previewGeneration += 1;
+    stopPreviewTimer();
+    previewElapsed = 0;
+    previewDuration = 0;
     if (pendingRecording) audio.removeSample(pendingRecording.id);
     pendingRecording = null;
+  }
+
+  function stopPreviewTimer(): void {
+    if (previewTimer) clearInterval(previewTimer);
+    previewTimer = null;
+    previewPlaying = false;
   }
 
   function stopRecordingTimer(): void {
@@ -892,6 +926,12 @@
     const wholeSeconds = Math.floor(seconds);
     const minutes = Math.floor(wholeSeconds / 60);
     return `${minutes}:${String(wholeSeconds % 60).padStart(2, '0')}`;
+  }
+
+  function formattedPreviewTime(seconds: number): string {
+    const tenths = Math.round(seconds * 10);
+    const minutes = Math.floor(tenths / 600);
+    return `${minutes}:${((tenths % 600) / 10).toFixed(1).padStart(4, '0')}`;
   }
 
   function setPadActive(
@@ -1718,11 +1758,33 @@
         {/if}
 
         {#if recordingState === 'preview' || recordingState === 'saving'}
+          <div class="preview-progress">
+            <div
+              class="preview-progress-track"
+              role="progressbar"
+              aria-label={t('record.playbackProgress')}
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow={previewDuration > 0
+                ? Math.round((previewElapsed / previewDuration) * 100)
+                : 0}
+            >
+              <span
+                class="preview-progress-fill"
+                style={`transform: scaleX(${previewDuration > 0 ? previewElapsed / previewDuration : 0})`}
+              ></span>
+            </div>
+            <span class="preview-time" aria-live="off">
+              {formattedPreviewTime(previewElapsed)} / {formattedPreviewTime(
+                previewDuration,
+              )}
+            </span>
+          </div>
           <div class="recording-actions preview-actions">
             <button
               class="secondary-action"
               type="button"
-              disabled={recordingState === 'saving'}
+              disabled={recordingState === 'saving' || previewPlaying}
               onclick={previewRecording}
             >
               <Play size={19} />
