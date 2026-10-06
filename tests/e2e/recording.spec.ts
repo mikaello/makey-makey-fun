@@ -54,6 +54,40 @@ test.beforeEach(async ({ page }) => {
     });
 
     class FakeAudioContext {
+      readonly sampleRate = 44100;
+      readonly destination = {};
+      readonly state = 'running';
+      private readonly startedAt = performance.now();
+
+      get currentTime(): number {
+        return (performance.now() - this.startedAt) / 1000;
+      }
+
+      createBuffer(_channels: number, length: number) {
+        const data = new Float32Array(length);
+        return { getChannelData: () => data };
+      }
+
+      createBufferSource() {
+        return {
+          connect: (node: unknown) => node,
+          start: () => undefined,
+          stop: () => undefined,
+          addEventListener: () => undefined,
+        };
+      }
+
+      createGain() {
+        return {
+          gain: { value: 1 },
+          connect: () => this.destination,
+        };
+      }
+
+      decodeAudioData(): Promise<{ duration: number }> {
+        return Promise.resolve({ duration: 1.2 });
+      }
+
       createAnalyser() {
         return {
           fftSize: 0,
@@ -80,6 +114,31 @@ test.beforeEach(async ({ page }) => {
       value: FakeAudioContext,
     });
   });
+});
+
+test('shows elapsed and total playback time while previewing', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.locator('main[data-storage-ready="true"]').waitFor();
+  await page.getByRole('button', { name: 'Record', exact: true }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Record a sound' });
+  await dialog.getByRole('button', { name: 'Start recording' }).click();
+  await dialog.getByRole('button', { name: 'Stop recording' }).click();
+
+  const progress = dialog.getByRole('progressbar', {
+    name: 'Preview playback progress',
+  });
+  await expect(progress).toHaveAttribute('aria-valuenow', '0');
+  await dialog.getByRole('button', { name: 'Preview' }).click();
+  await expect(dialog.locator('.preview-time')).toContainText('/ 0:01.2');
+  await expect
+    .poll(async () => Number(await progress.getAttribute('aria-valuenow')))
+    .toBeGreaterThan(0);
+  await expect(progress).toHaveAttribute('aria-valuenow', '100');
+  await expect(dialog.locator('.preview-time')).toHaveText('0:01.2 / 0:01.2');
+  await expect(dialog.getByRole('button', { name: 'Preview' })).toBeEnabled();
 });
 
 test('records into a pad, stops tracks, and restores the sample', async ({
