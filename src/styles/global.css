@@ -956,6 +956,39 @@ footer {
   transition: transform 80ms linear;
 }
 
+.preview-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.3rem 0.75rem;
+}
+
+.preview-progress-track {
+  height: 0.5rem;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dedbd3;
+}
+
+.preview-progress-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: #52825d;
+  transform-origin: left;
+  transition: transform 100ms linear;
+}
+
+.preview-time {
+  color: #655f56;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .recording-error {
   margin: 0;
   padding: 0.7rem 0.75rem;
