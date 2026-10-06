@@ -283,6 +283,11 @@ footer {
   overflow-y: auto;
 }
 
+.record-panel {
+  max-height: min(94dvh, 40rem);
+  overflow-y: auto;
+}
+
 .loop-panel {
   max-height: min(94dvh, 46rem);
   overflow-y: auto;

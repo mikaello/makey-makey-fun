@@ -117,6 +117,7 @@
   let recordingLevelFrame: number | null = null;
   let recordingTimer: ReturnType<typeof setInterval> | null = null;
   let recordingError = '';
+  let recordingName = '';
   let editBusy = false;
   let editSaving = false;
   let editLabel = '';
@@ -775,6 +776,7 @@
     try {
       const result = await recordingSession.stop();
       pendingRecording = { ...result, id: crypto.randomUUID() };
+      recordingName = nextRecordingName();
       recordingElapsed = result.duration;
       recordingState = 'preview';
     } catch (error) {
@@ -799,6 +801,11 @@
   }
 
   async function acceptRecording(): Promise<void> {
+    const name = recordingName.trim();
+    if (!name) {
+      recordingError = t('error.recordName');
+      return;
+    }
     const pad = project.pads.find(
       (candidate) => candidate.id === selectedPadId,
     );
@@ -808,7 +815,7 @@
     const sample: SampleRecord = {
       id: pendingRecording.id,
       projectId: project.id,
-      name: nextRecordingName(),
+      name,
       blob: pendingRecording.blob,
       mimeType: pendingRecording.mimeType,
       duration: pendingRecording.duration,
@@ -853,6 +860,7 @@
   function clearPendingRecording(): void {
     if (pendingRecording) audio.removeSample(pendingRecording.id);
     pendingRecording = null;
+    recordingName = '';
   }
 
   function stopRecordingTimer(): void {
@@ -1718,6 +1726,17 @@
         {/if}
 
         {#if recordingState === 'preview' || recordingState === 'saving'}
+          <label class="editor-field" for="recording-name">
+            <span>{t('record.nameLabel')}</span>
+            <input
+              id="recording-name"
+              type="text"
+              maxlength="48"
+              disabled={recordingState === 'saving'}
+              bind:value={recordingName}
+              oninput={() => (recordingError = '')}
+            />
+          </label>
           <div class="recording-actions preview-actions">
             <button
               class="secondary-action"
