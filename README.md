@@ -19,6 +19,10 @@ Use `npm run build` as the build command and `npx wrangler deploy` as the deploy
 Enable preview builds for pull requests; Workers preview URLs replace Pages branch URLs.
 After checking a preview, move any custom domain from Pages to the Worker and disable Pages deployments.
 
+The Worker logs successful HTML page loads as `page_view` in Workers Logs under Observability.
+Static assets bypass the Worker; offline visits do not create logs.
+No visitor identifiers or query strings are written by the application logger.
+
 The generated service worker makes the application shell and built-in starter sounds available offline after one successful visit.
 
 ## Browser support
