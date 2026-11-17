@@ -15,9 +15,9 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@astrojs/svelte": "9.1.2",
+    "@astrojs/svelte": "9.1.6",
     "@lucide/svelte": "1.47.0",
-    "astro": "7.4.7",
+    "astro": "7.4.12",
     "idb": "8.0.4",
     "svelte": "5.57.3",
     "zod": "4.6.7"
